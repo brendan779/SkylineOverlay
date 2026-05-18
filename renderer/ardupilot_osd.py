@@ -1116,82 +1116,89 @@ class OSDRenderer:
         wind_ve  = log.sample(log.wind_ve, t) if log.wind_ve else 0.0
         wind_enabled = getattr(cfg, "WIND_ENABLED", True) and bool(log.wind_vn)
 
+        # ── Enabled widgets ──────────────────────────────────────────────
+        # ENABLED_FIELDS gates which widgets render. A missing attribute
+        # means "show everything" (back-compat with older configs).
+        # The V/S bar and rangefinder badge are altitude-derived, so they
+        # follow the "altitude" toggle.
+        fields = getattr(cfg, "ENABLED_FIELDS", None)
+        def _on(name):
+            return fields is None or name in fields
+        show_speed     = _on("speed")
+        show_airspeed  = _on("airspeed")
+        show_altitude  = _on("altitude")
+        show_attitude  = _on("attitude")
+        show_mode      = _on("flight_mode")
+        show_messages  = _on("messages")
+
         # ── AH column x — exactly centred ────────────────────────────────
-        ah_x = self.w // 2 - AHW // 2
-
-        # ── Left group: GND | AIR | WIND | gap | ALT ─────────────────────
-        # Wind widget is a square the same height as the panel
-        WIND_W = ph if wind_enabled else 0
-        x = m
-        gnd_x  = x;        x += TW + GAP_SM
-        air_x  = x;        x += TW + GAP_SM
-        wind_x = x if wind_enabled else 0
-        if wind_enabled:
-            x += WIND_W + GAP_SM
-        alt_x  = x         # alt sits to the left of AH (will be recomputed below)
-
-        # ensure alt_x + TW + GAP_SM == ah_x (right-align alt to AH)
-        alt_x = ah_x - GAP_SM - TW
-
-        # ── Right group starts after AH ───────────────────────────────────
+        ah_x     = self.w // 2 - AHW // 2
         ah_right = ah_x + AHW
-        vas_x    = ah_right + GAP_SM
-        # mode and messages pushed to right margin
-        mode_x   = self.w - m - MODEW
-        msg_x    = mode_x   # same x, different y
 
-        # ── Draw left tapes ───────────────────────────────────────────────
-        for bx, val, unit, lbl in [
-            (gnd_x, gnd_val, gnd_unit, "GND SPD"),
-            (air_x, air_val, air_unit, "AIR SPD"),
-            (alt_x, alt_m,   "m",      "ALT"),
-        ]:
-            self._draw_tape(img, draw, bx, panel_top, TW, ph,
-                            val, unit, lbl)
-
-        # ── Wind compass ──────────────────────────────────────────────────
+        # ── Left group: speed / airspeed / wind packed from the margin ───
+        # Each enabled widget consumes its width + a gap; disabling one
+        # collapses the gap so the rest shift left (no hole).
+        left_x = m
+        if show_speed:
+            self._draw_tape(img, draw, left_x, panel_top, TW, ph,
+                            gnd_val, gnd_unit, "GND SPD")
+            left_x += TW + GAP_SM
+        if show_airspeed:
+            self._draw_tape(img, draw, left_x, panel_top, TW, ph,
+                            air_val, air_unit, "AIR SPD")
+            left_x += TW + GAP_SM
         if wind_enabled:
+            WIND_W = ph
             min_speed = getattr(cfg, "WIND_MIN_SPEED_MS", 0.5)
-            self._draw_wind(img, draw, wind_x, panel_top, WIND_W, ph,
-                            wind_vn, wind_ve, yaw,
-                            min_speed_ms=min_speed)
+            self._draw_wind(img, draw, left_x, panel_top, WIND_W, ph,
+                            wind_vn, wind_ve, yaw, min_speed_ms=min_speed)
+            left_x += WIND_W + GAP_SM
 
-        # Rangefinder badge — sits at top-right of alt tape, fully inside
-        if rng_m is not None:
-            # Render off-screen first to get actual width, then position
-            tmp = PILImage.new("RGBA", (400, 100), (0,0,0,0))
-            td  = IDraw.Draw(tmp)
-            badge_w = self._draw_rng_badge(td, 0, 0, rng_m)
-            # Place badge so its right edge sits 4px inside the alt tape edge
-            bx = alt_x + TW - badge_w - 4
-            self._draw_rng_badge(draw, bx, panel_top + 4, rng_m)
+        # ── Altitude tape — right-anchored against the horizon ───────────
+        if show_altitude:
+            alt_x = ah_x - GAP_SM - TW
+            self._draw_tape(img, draw, alt_x, panel_top, TW, ph,
+                            alt_m, "m", "ALT")
+            # Rangefinder badge — top-right of the alt tape, fully inside
+            if rng_m is not None:
+                tmp = PILImage.new("RGBA", (400, 100), (0, 0, 0, 0))
+                td  = IDraw.Draw(tmp)
+                badge_w = self._draw_rng_badge(td, 0, 0, rng_m)
+                bx = alt_x + TW - badge_w - 4
+                self._draw_rng_badge(draw, bx, panel_top + 4, rng_m)
 
-        # ── Artificial horizon ────────────────────────────────────────────
-        self._draw_horizon(img, draw, ah_x, panel_top, AHW, AH_H,
-                           pitch, roll)
+        # ── Artificial horizon + compass ribbon ──────────────────────────
+        if show_attitude:
+            self._draw_horizon(img, draw, ah_x, panel_top, AHW, AH_H,
+                               pitch, roll)
+            comp_y = panel_top + AH_H + 5
+            self._draw_compass(img, draw, ah_x, comp_y, AHW, COMP_H, yaw)
 
-        # ── Compass ribbon (below AH, same x/width) ───────────────────────
-        comp_y = panel_top + AH_H + 5
-        self._draw_compass(img, draw, ah_x, comp_y, AHW, COMP_H, yaw)
+        # ── Vertical airspeed (altitude-derived) ─────────────────────────
+        if show_altitude:
+            vas_x = ah_right + GAP_SM
+            self._draw_vas(img, draw, vas_x, panel_top, VASW, ph, vspeed)
 
-        # ── Vertical airspeed ─────────────────────────────────────────────
-        self._draw_vas(img, draw, vas_x, panel_top, VASW, ph, vspeed)
-
-        # ── Mode + messages on right ──────────────────────────────────────
-        # Mode box auto-sizes to its content; messages box is wider so full
-        # message text fits without truncation.
+        # ── Mode + messages on the right ─────────────────────────────────
         x_right = self.w - m
         mode_h  = int(ph * 0.32)
-        actual_mode_w = self._draw_mode(draw, x_right, panel_top, mode_h, mode_str)
-        # Messages box width: enough to fit ~60 chars of message at this font size
-        msg_box_w_factor = 0.20   # fraction of frame width — tune here
-        msg_w  = max(int(self.w * msg_box_w_factor),
-                     actual_mode_w)
-        msg_x  = x_right - msg_w
-        msg_h  = ph - mode_h - GAP_SM
-        msg_y  = panel_top + mode_h + GAP_SM
-        self._draw_messages(draw, msg_x, msg_y, msg_w, msg_h, msgs, t,
-                            cfg.MESSAGE_DISPLAY_SECONDS)
+        actual_mode_w = 0
+        if show_mode:
+            actual_mode_w = self._draw_mode(draw, x_right, panel_top,
+                                            mode_h, mode_str)
+        if show_messages:
+            # Messages box width: enough to fit ~60 chars at this font size.
+            msg_w = max(int(self.w * 0.20), actual_mode_w)
+            msg_x = x_right - msg_w
+            # When the mode pill is hidden, the messages box claims its space.
+            if show_mode:
+                msg_y = panel_top + mode_h + GAP_SM
+                msg_h = ph - mode_h - GAP_SM
+            else:
+                msg_y = panel_top
+                msg_h = ph
+            self._draw_messages(draw, msg_x, msg_y, msg_w, msg_h, msgs, t,
+                                cfg.MESSAGE_DISPLAY_SECONDS)
 
         return np.array(img)
 
