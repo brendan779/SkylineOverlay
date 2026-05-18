@@ -1,0 +1,15 @@
+.DS_Store
+.build/
+
+# Xcode — track the project + shared schemes, ignore per-user state
+xcuserdata/
+*.xcuserstate
+DerivedData/
+
+# Python
+__pycache__/
+*.pyc
+
+# Render artefacts
+osd_overlay.mov
+*.log
