@@ -1,19 +1,20 @@
 import SwiftUI
 
-/// Three-pane shell: Sidebar | (TitleBar / Preview) | Inspector.
-/// Scaffold placeholders — real panes land in later steps.
+/// Three-pane window: Sidebar | (TitleBar / Preview) | Inspector.
 struct ContentView: View {
+    @Environment(AppModel.self) private var model
+
     var body: some View {
         HStack(spacing: 0) {
-            sidebar
+            SidebarView()
             Divider().overlay(Theme.border)
             VStack(spacing: 0) {
                 titleBar
                 Divider().overlay(Theme.border)
                 HStack(spacing: 0) {
-                    preview
+                    PreviewPane()
                     Divider().overlay(Theme.border)
-                    inspector
+                    InspectorView()
                 }
             }
         }
@@ -21,44 +22,17 @@ struct ContentView: View {
         .ignoresSafeArea()
     }
 
-    private var sidebar: some View {
-        VStack {
-            Text("Sidebar")
-                .foregroundStyle(Theme.textMuted)
-        }
-        .frame(width: Theme.sidebarWidth)
-        .frame(maxHeight: .infinity)
-        .background(Theme.surface)
-    }
-
     private var titleBar: some View {
-        HStack {
-            Text("Skyline")
+        HStack(spacing: 8) {
+            Text(model.logURL?.lastPathComponent ?? "Skyline")
                 .font(.system(size: 12.5, weight: .semibold))
-                .foregroundStyle(Theme.textPrimary)
+                .foregroundStyle(model.hasLog ? Theme.textPrimary : Theme.textSecondary)
             Spacer()
         }
         .padding(.horizontal, 14)
         .frame(height: Theme.titleBarHeight)
-        .background(Theme.surface)
-    }
-
-    private var preview: some View {
-        VStack {
-            Text("Preview")
-                .foregroundStyle(Theme.textMuted)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.previewBackground)
-    }
-
-    private var inspector: some View {
-        VStack {
-            Text("Inspector")
-                .foregroundStyle(Theme.textMuted)
-        }
-        .frame(width: Theme.inspectorWidth)
-        .frame(maxHeight: .infinity)
-        .background(Theme.surface)
+        .background(
+            LinearGradient(colors: [Color(hex: 0x1C1F24), Color(hex: 0x181B1F)],
+                           startPoint: .top, endPoint: .bottom))
     }
 }
