@@ -23,6 +23,7 @@ Options:
 import sys
 import os
 import argparse
+import json
 import math
 import subprocess
 import multiprocessing
@@ -45,14 +46,15 @@ def _check_deps():
     except ImportError:
         missing.append("numpy")
     if missing:
-        print(f"[ERROR] Missing packages: {', '.join(missing)}")
-        print(f"        Run: pip3 install {' '.join(missing)} --break-system-packages")
+        print(f"[ERROR] Missing packages: {', '.join(missing)}", file=sys.stderr)
+        print(f"        Run: pip3 install {' '.join(missing)} --break-system-packages",
+              file=sys.stderr)
         sys.exit(1)
     try:
         subprocess.run(["ffmpeg", "-version"], capture_output=True, check=True)
     except FileNotFoundError:
-        print("[ERROR] ffmpeg not found.")
-        print("        Install with: brew install ffmpeg")
+        print("[ERROR] ffmpeg not found.", file=sys.stderr)
+        print("        Install with: brew install ffmpeg", file=sys.stderr)
         sys.exit(1)
 
 _check_deps()
@@ -68,6 +70,31 @@ def load_config(config_path: str):
     cfg = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(cfg)
     return cfg
+
+def apply_config_overrides(cfg, overrides: dict):
+    """Apply a dict of config overrides onto a loaded config module.
+
+    Used by the Skyline GUI: it writes a small JSON of the settings the
+    user changed in the Inspector, instead of hand-editing osd_config.py.
+    """
+    for key, value in overrides.items():
+        setattr(cfg, key, value)
+    return cfg
+
+# ── Structured output ─────────────────────────────────────────────────────────
+# When --json is passed, stdout carries only machine-readable JSON lines for the
+# Skyline GUI; all human-readable diagnostics are routed to stderr instead.
+JSON_MODE = False
+
+def _emit(event: str, **fields):
+    """Emit one JSON line to stdout."""
+    payload = {"event": event}
+    payload.update(fields)
+    print(json.dumps(payload), flush=True)
+
+def _info(msg: str):
+    """Human-readable diagnostic — stderr in JSON mode, stdout otherwise."""
+    print(msg, file=sys.stderr if JSON_MODE else sys.stdout, flush=True)
 
 # ── ArduPlane flight modes (fixed-wing + VTOL/quadplane) ─────────────────────
 PLANE_MODES = {
@@ -248,7 +275,7 @@ class LogData:
                         self.wind_ve.append((t, float(vwe)))
 
         if t0 is None:
-            print("[warn] No timestamped messages found — log may be empty or corrupt.")
+            _info("[warn] No timestamped messages found — log may be empty or corrupt.")
             return
 
         # Compute relative altitude from BARO Alt by zeroing at start
@@ -405,16 +432,19 @@ class OSDRenderer:
                 break
 
         if fonts_dir is None:
-            print("[ERROR] Cannot find BarlowCondensed-Bold.ttf in any of:")
+            print("[ERROR] Cannot find BarlowCondensed-Bold.ttf in any of:",
+                  file=sys.stderr)
             for c in candidates:
-                print(f"          {c}")
-            print("        The fonts/ folder must sit next to ardupilot_osd.py")
-            print("        OR in the directory you run the script from.")
+                print(f"          {c}", file=sys.stderr)
+            print("        The fonts/ folder must sit next to ardupilot_osd.py",
+                  file=sys.stderr)
+            print("        OR in the directory you run the script from.",
+                  file=sys.stderr)
             sys.exit(1)
 
         reg  = str(fonts_dir / "BarlowCondensed-Regular.ttf")
         bold = str(fonts_dir / "BarlowCondensed-Bold.ttf")
-        print(f"[fonts] Loading from {fonts_dir}")
+        print(f"[fonts] Loading from {fonts_dir}", file=sys.stderr)
 
         def _load(path, size):
             try:
@@ -422,8 +452,10 @@ class OSDRenderer:
             except Exception as e:
                 # If a TTF that we KNOW exists fails to load, that's a real
                 # error — don't silently fall back to the unscalable bitmap font.
-                print(f"[ERROR] Failed to load font {path} at size {size}: {e}")
-                print("        Falling back to default bitmap font (text will be tiny).")
+                print(f"[ERROR] Failed to load font {path} at size {size}: {e}",
+                      file=sys.stderr)
+                print("        Falling back to default bitmap font (text will be tiny).",
+                      file=sys.stderr)
                 return ImageFont.load_default()
         # Font sizes scale directly with output height (1080p reference).
         # Values below are pixel-equivalent (PIL ≥9 on Linux/macOS).
@@ -1209,16 +1241,42 @@ def _render_worker(t: float) -> np.ndarray:
     return _pool_renderer.render_frame(t)
 
 
+# ── Single-frame mode ─────────────────────────────────────────────────────────
+def render_single_frame(cfg, log: LogData, video_t: float, out_path: str):
+    """Render one OSD frame as a transparent PNG.
+
+    `video_t` is a timestamp in the source video; telemetry is sampled at
+    video_t + TIME_OFFSET_SECONDS so the still matches a full render.
+    Used by the Skyline GUI to draw the scrub-bar preview.
+    """
+    renderer = OSDRenderer(cfg, log)
+    telemetry_t = video_t + cfg.TIME_OFFSET_SECONDS
+    rgba = renderer.render_frame(telemetry_t)
+    PILImage.fromarray(rgba, "RGBA").save(out_path)
+    resolved = str(Path(out_path).resolve())
+    if JSON_MODE:
+        _emit("frame", output=resolved, timestamp=video_t,
+              duration=log.duration())
+    else:
+        _info(f"[frame] Saved: {resolved}")
+
+
 # ── CLI ───────────────────────────────────────────────────────────────────────
 def parse_args():
     p = argparse.ArgumentParser(description="ArduPilot OSD overlay generator")
     p.add_argument("bin",        help="Path to ArduPilot .bin dataflash log")
     p.add_argument("--config",   default=None, help="Path to osd_config.py")
-    p.add_argument("--out",      default=None, help="Output .mov path")
+    p.add_argument("--config-json", default=None,
+                   help="Path to a JSON file of config overrides (merged onto --config)")
+    p.add_argument("--out",      default=None, help="Output .mov / .png path")
     p.add_argument("--offset",   type=float, default=None)
     p.add_argument("--fps",      type=float, default=None)
     p.add_argument("--width",    type=int,   default=None)
     p.add_argument("--height",   type=int,   default=None)
+    p.add_argument("--frame",    type=float, default=None,
+                   help="Render a single PNG frame at this video timestamp (s) and exit")
+    p.add_argument("--json",     action="store_true",
+                   help="Emit machine-readable JSON lines on stdout")
     p.add_argument("--preview",  action="store_true",
                    help="Render first 10 seconds only")
     p.add_argument("--dump",     action="store_true",
@@ -1226,18 +1284,39 @@ def parse_args():
     return p.parse_args()
 
 
+def _fail(message: str):
+    """Report a fatal error (JSON-aware) and exit."""
+    if JSON_MODE:
+        _emit("error", message=message)
+    else:
+        print(f"[ERROR] {message}", file=sys.stderr)
+    sys.exit(1)
+
+
 def main():
+    global JSON_MODE
     args = parse_args()
+    JSON_MODE = args.json
 
     # Load config
     script_dir  = Path(__file__).parent
     config_path = args.config or str(script_dir / "osd_config.py")
     if not os.path.exists(config_path):
-        print(f"[ERROR] Config not found: {config_path}")
-        sys.exit(1)
+        _fail(f"Config not found: {config_path}")
     cfg = load_config(config_path)
 
-    # Apply CLI overrides
+    # Apply JSON config overrides (from the Skyline GUI Inspector)
+    if args.config_json:
+        if not os.path.exists(args.config_json):
+            _fail(f"Config JSON not found: {args.config_json}")
+        try:
+            with open(args.config_json) as f:
+                overrides = json.load(f)
+        except json.JSONDecodeError as e:
+            _fail(f"Invalid config JSON: {e}")
+        apply_config_overrides(cfg, overrides)
+
+    # Apply explicit CLI overrides (these win over --config-json)
     if args.out:     cfg.OUTPUT_FILE = args.out
     if args.offset is not None: cfg.TIME_OFFSET_SECONDS = args.offset
     if args.fps:     cfg.OUTPUT_FPS  = args.fps
@@ -1246,7 +1325,6 @@ def main():
 
     # Dump mode
     if args.dump:
-        print("Scanning log message types...")
         mlog = mavutil.mavlink_connection(args.bin, robust_parsing=True)
         types = set()
         while True:
@@ -1254,20 +1332,31 @@ def main():
             if msg is None:
                 break
             types.add(msg.get_type())
-        for t in sorted(types):
-            print(f"  {t}")
+        if JSON_MODE:
+            _emit("dump", types=sorted(types))
+        else:
+            print("Scanning log message types...")
+            for t in sorted(types):
+                print(f"  {t}")
         return
 
     # Load log
-    log = LogData(args.bin)
+    log = LogData(args.bin, verbose=not JSON_MODE)
     duration = log.duration()
     if duration == 0:
-        print("[ERROR] No telemetry data found in log.")
-        sys.exit(1)
+        _fail("No telemetry data found in log.")
+
+    # Single-frame mode — render one PNG and exit
+    if args.frame is not None:
+        out_path = cfg.OUTPUT_FILE
+        if not out_path.lower().endswith(".png"):
+            out_path = str(Path(out_path).with_suffix(".png"))
+        render_single_frame(cfg, log, args.frame, out_path)
+        return
 
     if args.preview:
         duration = min(duration, 10.0)
-        print(f"[preview] Rendering first {duration:.1f}s")
+        _info(f"[preview] Rendering first {duration:.1f}s")
 
     fps      = cfg.OUTPUT_FPS
     offset   = cfg.TIME_OFFSET_SECONDS
@@ -1275,8 +1364,8 @@ def main():
     out_path = cfg.OUTPUT_FILE
 
     n_workers = max(1, multiprocessing.cpu_count() - 1)
-    print(f"[render] {n_frames} frames @ {fps}fps → {out_path}")
-    print(f"[render] Resolution: {cfg.OUTPUT_WIDTH}x{cfg.OUTPUT_HEIGHT}  Workers: {n_workers}")
+    _info(f"[render] {n_frames} frames @ {fps}fps → {out_path}")
+    _info(f"[render] Resolution: {cfg.OUTPUT_WIDTH}x{cfg.OUTPUT_HEIGHT}  Workers: {n_workers}")
 
     def fmt_time(s: float) -> str:
         m, s = divmod(int(s), 60)
@@ -1286,6 +1375,25 @@ def main():
     writer = VideoWriter(out_path, cfg.OUTPUT_WIDTH, cfg.OUTPUT_HEIGHT, fps)
     interrupted = False
     render_start = time.monotonic()
+    report_every = max(1, int(fps) // 2)
+
+    if JSON_MODE:
+        _emit("start", frames=n_frames, fps=fps,
+              width=cfg.OUTPUT_WIDTH, height=cfg.OUTPUT_HEIGHT, output=out_path)
+
+    def report(i: int):
+        elapsed = time.monotonic() - render_start
+        pct = i / n_frames if n_frames else 1.0
+        eta = (elapsed / pct - elapsed) if pct > 0 else 0
+        if JSON_MODE:
+            _emit("progress", pct=round(pct, 4), frame=i, frames=n_frames,
+                  elapsed=round(elapsed, 2), eta=round(eta, 2))
+        else:
+            print(
+                f"\r[render] {pct*100:5.1f}%  {i}/{n_frames}"
+                f"  elapsed {fmt_time(elapsed)}  eta {fmt_time(eta)}   ",
+                end="", flush=True,
+            )
 
     with multiprocessing.Pool(
         processes=n_workers,
@@ -1294,24 +1402,28 @@ def main():
     ) as pool:
         try:
             for i, frame in enumerate(pool.imap(_render_worker, times, chunksize=1)):
-                if i % int(fps) == 0:
-                    elapsed = time.monotonic() - render_start
-                    pct = i / n_frames
-                    eta = (elapsed / pct - elapsed) if pct > 0 else 0
-                    print(
-                        f"\r[render] {pct*100:5.1f}%  {i}/{n_frames}"
-                        f"  elapsed {fmt_time(elapsed)}  eta {fmt_time(eta)}   ",
-                        end="", flush=True,
-                    )
+                if i % report_every == 0:
+                    report(i)
                 writer.write(frame)
         except KeyboardInterrupt:
             pool.terminate()
             interrupted = True
-            print("\n[interrupted]")
+            if JSON_MODE:
+                _emit("cancelled")
+            else:
+                print("\n[interrupted]")
         finally:
             writer.close()
 
     if interrupted:
+        return
+
+    elapsed = time.monotonic() - render_start
+    if JSON_MODE:
+        _emit("progress", pct=1.0, frame=n_frames, frames=n_frames,
+              elapsed=round(elapsed, 2), eta=0.0)
+        _emit("done", output=str(Path(out_path).resolve()),
+              frames=n_frames, elapsed=round(elapsed, 2))
         return
 
     print(f"\n[done] Saved: {out_path}")
