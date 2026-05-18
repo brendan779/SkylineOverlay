@@ -4,6 +4,10 @@ import SwiftUI
 struct SkylineApp: App {
     @State private var model = AppModel()
 
+    init() {
+        FontLoader.registerBundledFonts()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()

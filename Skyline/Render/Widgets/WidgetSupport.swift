@@ -1,10 +1,10 @@
 import SwiftUI
 
 extension Font {
-    /// Condensed HUD font. Uses a system condensed face until the bundled
-    /// Barlow Condensed is registered (Stage 6).
+    /// The HUD typeface — bundled Barlow Condensed, registered at launch.
+    /// Falls back to the system font if registration ever fails.
     static func hud(_ size: CGFloat, weight: Font.Weight = .medium) -> Font {
-        .system(size: size, weight: weight).width(.condensed)
+        .custom("Barlow Condensed", size: size).weight(weight)
     }
 }
 

@@ -110,6 +110,6 @@ struct TapeWidget: View {
 
     private func condensed(_ size: CGFloat,
                            weight: Font.Weight = .medium) -> Font {
-        .system(size: size, weight: weight).width(.condensed)
+        .hud(size, weight: weight)
     }
 }
