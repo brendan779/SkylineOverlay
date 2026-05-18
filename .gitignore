@@ -6,8 +6,8 @@ xcuserdata/
 *.xcuserstate
 DerivedData/
 
-# DMG build — intermediates and the binary disk image
+# DMG build — intermediates and the packaged disk image
 .dmgbuild/
 .dmgstaging/
 *.log
-site/Skyline.dmg
+dist/

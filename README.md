@@ -6,7 +6,7 @@ Skyline reads an ArduPilot `.bin` dataflash log and renders a transparent,
 DJI-style HUD overlay to composite over your flight footage. No command line,
 no Python — just a Mac app.
 
-![The Skyline telemetry HUD](site/screenshot.png)
+![The Skyline telemetry HUD](docs/screenshot.png)
 
 ## Download
 
@@ -54,7 +54,8 @@ Build and run with Xcode, or produce a distributable disk image:
 ./build-dmg.sh
 ```
 
-This builds the Release configuration and writes `site/Skyline.dmg`.
+This builds the Release configuration and writes `dist/Skyline.dmg`, ready
+to upload to a GitHub release.
 
 ## License
 
