@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Skyline — ArduPilot flight overlay renderer for macOS</title>
+<link rel="icon" href="icon.png">
 <style>
   :root {
     --bg: #0e1013;
@@ -32,12 +33,7 @@
     display: flex; align-items: center; gap: 9px;
     padding: 28px 0 0;
   }
-  .logo {
-    width: 28px; height: 28px; border-radius: 8px;
-    background: linear-gradient(135deg, var(--accent), rgba(65,215,125,0.5));
-    color: #000; font-weight: 800; font-size: 16px;
-    display: flex; align-items: center; justify-content: center;
-  }
+  .logo { width: 30px; height: 30px; display: block; }
   header .name { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
   header .beta {
     font-size: 10px; font-weight: 600; color: var(--faint);
@@ -144,7 +140,7 @@
 <div class="wrap">
 
   <header>
-    <div class="logo">&#8599;</div>
+    <img class="logo" src="icon.png" alt="Skyline icon">
     <span class="name">Skyline</span>
     <span class="beta">BETA</span>
   </header>
