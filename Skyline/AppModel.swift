@@ -20,7 +20,7 @@ final class AppModel {
     /// When on, dragged widgets snap to a grid for easy alignment.
     var snapToGrid = true
     /// Grid divisions along each axis (the snap granularity).
-    var gridDivisions = 24
+    var gridDivisions = 48
 
     // ── Timeline ─────────────────────────────────────────────────────────
     /// Playhead position in seconds, on the video timeline (or the log's
