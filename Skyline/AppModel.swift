@@ -19,6 +19,11 @@ final class AppModel {
     /// The widget currently selected for editing in the Inspector.
     var selectedWidget: WidgetKind?
 
+    /// When on, dragged widgets snap to a grid for easy alignment.
+    var snapToGrid = true
+    /// Grid divisions along each axis (the snap granularity).
+    var gridDivisions = 24
+
     var hasLog: Bool { flightLog != nil }
     var duration: Double { flightLog?.duration() ?? 0 }
 

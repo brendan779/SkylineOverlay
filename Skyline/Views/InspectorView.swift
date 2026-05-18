@@ -52,8 +52,19 @@ struct InspectorControls: View {
     // ── Widget list ──────────────────────────────────────────────────────
     private var widgetsSection: some View {
         section("Widgets") {
-            VStack(spacing: 1) {
-                ForEach(WidgetKind.allCases) { widgetRow($0) }
+            VStack(spacing: 8) {
+                Toggle(isOn: Binding { model.snapToGrid }
+                    set: { model.snapToGrid = $0 }) {
+                    Text("Snap to grid")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+
+                VStack(spacing: 1) {
+                    ForEach(WidgetKind.allCases) { widgetRow($0) }
+                }
             }
         }
     }
