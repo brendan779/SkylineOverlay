@@ -22,6 +22,17 @@ final class FlightLog {
     private(set) var flightMode: [(t: Double, mode: String)] = []
     private(set) var messages: [(t: Double, text: String, severity: Int)] = []
 
+    /// RCOU motor outputs in µs: the throttle (servo 5) and the four lift
+    /// motors (servos 7–10). A `FadingSeries` so widgets can fade a channel
+    /// out once it goes quiet.
+    private(set) var motorThrottle = FadingSeries.empty
+    private(set) var motorLift: [FadingSeries] = []
+    /// Rangefinder readings, wrapped for the same drop-out fade.
+    private(set) var rangefinderFade = FadingSeries.empty
+
+    /// PWM at or above which an RCOU channel counts as "live".
+    static let motorLiveThreshold: Double = 1000
+
     enum LogError: Error { case empty }
 
     convenience init(url: URL) throws {
@@ -37,8 +48,14 @@ final class FlightLog {
     private func build(from data: Data) throws {
         let wanted: Set<String> = [
             "GPS", "ARSP", "BARO", "ATT", "MODE", "MSG", "RFND", "XKF2", "NKF2",
+            "RCOU",
         ]
         var t0: Double?
+
+        // RCOU servo outputs collected raw, then wrapped after parsing.
+        let liftServos = [7, 8, 9, 10]
+        var throttleRaw: Series = []
+        var liftRaw: [Series] = Array(repeating: [], count: liftServos.count)
 
         try DataFlashParser.parse(data: data, wanted: wanted) { m in
             guard let tsec = Self.timestamp(of: m) else { return }
@@ -68,6 +85,13 @@ final class FlightLog {
                 if status == 4, let d = m.fields["Dist"]?.double, d > 0 {
                     rangefinder.append((t, d))
                 }
+            case "RCOU":
+                if let v = m.fields["C5"]?.double { throttleRaw.append((t, v)) }
+                for (i, ch) in liftServos.enumerated() {
+                    if let v = m.fields["C\(ch)"]?.double {
+                        liftRaw[i].append((t, v))
+                    }
+                }
             case "XKF2", "NKF2":
                 if let vn = m.fields["VWN"]?.double,
                    let ve = m.fields["VWE"]?.double,
@@ -84,6 +108,12 @@ final class FlightLog {
         if let a0 = altitude.first?.v {
             altitude = altitude.map { ($0.t, $0.v - a0) }
         }
+
+        motorThrottle = FadingSeries(throttleRaw, threshold: Self.motorLiveThreshold)
+        motorLift = liftRaw.map { FadingSeries($0, threshold: Self.motorLiveThreshold) }
+        // Every rangefinder sample is already a valid reading, so any of them
+        // counts as "live" — a zero threshold makes the fade purely recency.
+        rangefinderFade = FadingSeries(rangefinder, threshold: 0)
     }
 
     private static func timestamp(of m: LogMessage) -> Double? {
@@ -143,5 +173,43 @@ final class FlightLog {
 
     static func modeName(_ n: Int) -> String {
         planeModes[n] ?? "Mode \(n)"
+    }
+}
+
+/// A telemetry series that also answers, in O(log n), "how long since the
+/// value was last at or above a threshold". Widgets use this to fade out
+/// when a channel goes quiet — a motor stopping, a sensor dropping out.
+struct FadingSeries {
+    let samples: FlightLog.Series
+    /// Parallel to `samples`: time of the most recent in-range sample at or
+    /// before that index (`-infinity` until the first one occurs).
+    private let lastLive: [Double]
+
+    static let empty = FadingSeries([], threshold: 0)
+
+    init(_ samples: FlightLog.Series, threshold: Double) {
+        self.samples = samples
+        var acc: [Double] = []
+        acc.reserveCapacity(samples.count)
+        var last = -Double.infinity
+        for s in samples {
+            if s.v >= threshold { last = s.t }
+            acc.append(last)
+        }
+        lastLive = acc
+    }
+
+    /// Seconds since the value was last at or above the threshold, as of `t`.
+    /// `.infinity` when it never has been (or there is no data).
+    func secondsSinceLive(at t: Double) -> Double {
+        guard let first = samples.first, t >= first.t else { return .infinity }
+        var lo = 0
+        var hi = samples.count - 1
+        while lo < hi {
+            let mid = (lo + hi + 1) / 2
+            if samples[mid].t <= t { lo = mid } else { hi = mid - 1 }
+        }
+        let last = lastLive[lo]
+        return last.isFinite ? t - last : .infinity
     }
 }

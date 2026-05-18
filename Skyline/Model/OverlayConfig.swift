@@ -118,6 +118,8 @@ struct WidgetSettings: Codable, Equatable {
         case .attitude:      return CGPoint(x: 0.50, y: 0.84)
         case .heading:       return CGPoint(x: 0.50, y: 0.94)
         case .verticalSpeed: return CGPoint(x: 0.60, y: 0.86)
+        case .motors:        return CGPoint(x: 0.70, y: 0.85)
+        case .rangefinder:   return CGPoint(x: 0.40, y: 0.72)
         case .flightMode:    return CGPoint(x: 0.86, y: 0.82)
         case .messages:      return CGPoint(x: 0.83, y: 0.91)
         }

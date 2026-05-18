@@ -12,6 +12,8 @@ enum WidgetKind: String, CaseIterable, Codable, Identifiable {
     case attitude
     case heading
     case verticalSpeed
+    case motors
+    case rangefinder
     case flightMode
     case messages
 
@@ -26,6 +28,8 @@ enum WidgetKind: String, CaseIterable, Codable, Identifiable {
         case .attitude:      return "Artificial Horizon"
         case .heading:       return "Heading Compass"
         case .verticalSpeed: return "Vertical Speed"
+        case .motors:        return "Motors"
+        case .rangefinder:   return "Rangefinder"
         case .flightMode:    return "Flight Mode"
         case .messages:      return "Messages"
         }
@@ -46,6 +50,10 @@ enum WidgetKind: String, CaseIterable, Codable, Identifiable {
             return CGSize(width: 250, height: 34)
         case .verticalSpeed:
             return CGSize(width: 60, height: 150)
+        case .motors:
+            return CGSize(width: 150, height: 150)
+        case .rangefinder:
+            return CGSize(width: 120, height: 70)
         case .flightMode:
             return CGSize(width: 190, height: 46)
         case .messages:

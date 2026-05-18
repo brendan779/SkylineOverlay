@@ -82,6 +82,14 @@ struct OverlayView: View {
         case .verticalSpeed:
             VerticalSpeedWidget(settings: settings, theme: config.theme,
                                 verticalSpeed: sample.verticalSpeed, size: size)
+        case .motors:
+            MotorBarWidget(settings: settings, theme: config.theme,
+                           throttle: sample.throttle,
+                           liftMotors: sample.liftMotors, size: size)
+        case .rangefinder:
+            RangefinderWidget(settings: settings, theme: config.theme,
+                              distance: sample.rangefinder,
+                              dataOpacity: sample.rangefinderOpacity, size: size)
         case .wind:
             WindCompassWidget(settings: settings, theme: config.theme,
                               windVN: sample.windVN, windVE: sample.windVE,
