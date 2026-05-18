@@ -7,7 +7,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 APP_NAME="Skyline"
-VERSION="0.1.0"
+VERSION="0.2.0"
 DERIVED="$PWD/.dmgbuild"
 STAGING="$PWD/.dmgstaging"
 LOG="$PWD/.dmgbuild.log"
