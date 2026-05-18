@@ -45,7 +45,7 @@ enum WidgetKind: String, CaseIterable, Codable, Identifiable {
         case .heading:
             return CGSize(width: 250, height: 34)
         case .verticalSpeed:
-            return CGSize(width: 36, height: 150)
+            return CGSize(width: 60, height: 150)
         case .flightMode:
             return CGSize(width: 190, height: 46)
         case .messages:

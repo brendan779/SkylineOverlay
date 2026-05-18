@@ -58,9 +58,20 @@ struct OverlayView: View {
             MessagesWidget(settings: settings, theme: config.theme,
                            messages: sample.messages,
                            window: config.messageDisplaySeconds, size: size)
-        case .attitude, .heading, .verticalSpeed, .wind:
-            // Implemented in Stage 3b.
-            EmptyView()
+        case .attitude:
+            ArtificialHorizonWidget(settings: settings, theme: config.theme,
+                                    pitch: sample.pitch, roll: sample.roll, size: size)
+        case .heading:
+            HeadingCompassWidget(settings: settings, theme: config.theme,
+                                 heading: sample.yaw, size: size)
+        case .verticalSpeed:
+            VerticalSpeedWidget(settings: settings, theme: config.theme,
+                                verticalSpeed: sample.verticalSpeed, size: size)
+        case .wind:
+            WindCompassWidget(settings: settings, theme: config.theme,
+                              windVN: sample.windVN, windVE: sample.windVE,
+                              yaw: sample.yaw, hasWind: sample.hasWind,
+                              speedUnit: config.speedUnits, size: size)
         }
     }
 }
