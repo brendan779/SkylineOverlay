@@ -6,10 +6,8 @@ xcuserdata/
 *.xcuserstate
 DerivedData/
 
-# Python
-__pycache__/
-*.pyc
-
-# Render artefacts
-osd_overlay.mov
+# DMG build — intermediates and the binary disk image
+.dmgbuild/
+.dmgstaging/
 *.log
+site/Skyline.dmg
