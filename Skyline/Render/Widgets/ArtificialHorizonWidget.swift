@@ -26,10 +26,12 @@ struct ArtificialHorizonWidget: View {
                          cornerRadius: h * 0.12)
 
         // Sky / ground + pitch ladder live in a clipped, rotated layer.
+        // The world counter-rotates against the aircraft: a right bank
+        // (positive roll) tilts the horizon high on the right.
         var world = ctx
         world.clip(to: panel)
         world.translateBy(x: cx, y: cy)
-        world.rotate(by: .degrees(roll))
+        world.rotate(by: .degrees(-roll))
 
         let big = max(w, h) * 2.4
         let horizon = CGFloat(pitch) * pxPerDeg
