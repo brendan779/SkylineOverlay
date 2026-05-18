@@ -17,6 +17,8 @@ struct InspectorView: View {
             ScrollView {
                 InspectorControls().padding(18)
             }
+
+            RenderBar()
         }
         .frame(width: Theme.inspectorWidth)
         .frame(maxHeight: .infinity)

@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 /// Root application state — the loaded flight log, the overlay configuration,
 /// and the current scrub position. Injected into the view tree.
+@MainActor
 @Observable
 final class AppModel {
     var flightLog: FlightLog?
@@ -50,5 +51,61 @@ final class AppModel {
         if panel.runModal() == .OK, let url = panel.url {
             loadLog(url: url)
         }
+    }
+
+    // ── Export ───────────────────────────────────────────────────────────
+    enum RenderPhase: Equatable {
+        case idle
+        case rendering(Double)   // 0...1 progress
+        case done(URL)
+        case failed(String)
+    }
+
+    var renderPhase: RenderPhase = .idle
+    private var exporter: VideoExporter?
+
+    var isRendering: Bool {
+        if case .rendering = renderPhase { return true }
+        return false
+    }
+
+    /// Ask for an output location, then render the overlay to a video file.
+    func startExport() {
+        guard let log = flightLog else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.quickTimeMovie]
+        let base = logURL?.deletingPathExtension().lastPathComponent ?? "overlay"
+        panel.nameFieldStringValue = "\(base)_overlay.mov"
+        panel.message = "Choose where to save the overlay video"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        let exporter = VideoExporter()
+        self.exporter = exporter
+        renderPhase = .rendering(0)
+        Task { @MainActor in
+            do {
+                try await exporter.export(log: log, config: config, to: url) { p in
+                    self.renderPhase = .rendering(p.fraction)
+                }
+                renderPhase = .done(url)
+            } catch is CancellationError {
+                renderPhase = .idle
+            } catch {
+                renderPhase = .failed(error.localizedDescription)
+            }
+            self.exporter = nil
+        }
+    }
+
+    func cancelExport() {
+        exporter?.cancel()
+    }
+
+    func resetRender() {
+        renderPhase = .idle
+    }
+
+    func revealInFinder(_ url: URL) {
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 }
