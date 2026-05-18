@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// Transparent hit layer over the preview — selecting and dragging widgets.
-/// Kept separate from `OverlayView` so the renderer stays gesture-free.
+/// Transparent hit layer over the preview — selecting and dragging widgets,
+/// with optional snap-to-grid alignment. Kept separate from `OverlayView`
+/// so the renderer stays gesture-free.
 struct WidgetInteractionLayer: View {
     @Environment(AppModel.self) private var model
     var frameSize: CGSize
@@ -12,6 +13,9 @@ struct WidgetInteractionLayer: View {
     var body: some View {
         let layout = OverlayLayout(config: model.config, frameSize: frameSize)
         ZStack(alignment: .topLeading) {
+            if model.snapToGrid, model.selectedWidget != nil {
+                gridOverlay
+            }
             ForEach(WidgetKind.allCases) { kind in
                 if model.config[kind].isEnabled {
                     handle(kind, rect: layout.rect(for: kind))
@@ -19,6 +23,22 @@ struct WidgetInteractionLayer: View {
             }
         }
         .frame(width: frameSize.width, height: frameSize.height)
+    }
+
+    /// Faint grid shown while a widget is selected, so snap points are visible.
+    private var gridOverlay: some View {
+        Canvas { ctx, size in
+            let n = max(1, model.gridDivisions)
+            for i in 1..<n {
+                let x = size.width * CGFloat(i) / CGFloat(n)
+                let y = size.height * CGFloat(i) / CGFloat(n)
+                ctx.stroke(segment(x, 0, x, size.height),
+                           with: .color(.white.opacity(0.06)), lineWidth: 1)
+                ctx.stroke(segment(0, y, size.width, y),
+                           with: .color(.white.opacity(0.06)), lineWidth: 1)
+            }
+        }
+        .allowsHitTesting(false)
     }
 
     private func handle(_ kind: WidgetKind, rect: CGRect) -> some View {
@@ -39,10 +59,16 @@ struct WidgetInteractionLayer: View {
                             model.selectedWidget = kind
                         }
                         guard let origin = dragOrigin else { return }
-                        let x = origin.x + value.translation.width / frameSize.width
-                        let y = origin.y + value.translation.height / frameSize.height
-                        model.config[kind].position = CGPoint(
-                            x: min(max(x, 0), 1), y: min(max(y, 0), 1))
+                        var x = origin.x + value.translation.width / frameSize.width
+                        var y = origin.y + value.translation.height / frameSize.height
+                        x = min(max(x, 0), 1)
+                        y = min(max(y, 0), 1)
+                        if model.snapToGrid {
+                            let n = Double(max(1, model.gridDivisions))
+                            x = (x * n).rounded() / n
+                            y = (y * n).rounded() / n
+                        }
+                        model.config[kind].position = CGPoint(x: x, y: y)
                     }
                     .onEnded { _ in dragOrigin = nil })
     }

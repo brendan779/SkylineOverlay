@@ -7,7 +7,6 @@ struct PreviewPane: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        @Bindable var model = model
         VStack(spacing: 0) {
             GeometryReader { geo in
                 let frame = Self.fit(aspect: 16.0 / 9.0, in: geo.size)
@@ -23,21 +22,32 @@ struct PreviewPane: View {
             .padding(24)
 
             if model.hasLog {
-                ScrubBar(time: $model.scrubTime, duration: model.duration)
+                ScrubBar()
             }
         }
         .background(Theme.previewBackground)
         .dropDestination(for: URL.self) { urls, _ in
-            guard let url = urls.first(where: { $0.pathExtension.lowercased() == "bin" })
-            else { return false }
-            model.loadLog(url: url)
-            return true
+            if let bin = urls.first(where: { $0.pathExtension.lowercased() == "bin" }) {
+                model.loadLog(url: bin)
+                return true
+            }
+            if let video = urls.first(where: {
+                ["mov", "mp4", "m4v"].contains($0.pathExtension.lowercased())
+            }) {
+                model.loadVideo(url: video)
+                return true
+            }
+            return false
         }
     }
 
     private func loadedFrame(_ size: CGSize) -> some View {
         ZStack {
-            VideoBackdrop()
+            if let player = model.player {
+                PlayerView(player: player)
+            } else {
+                VideoBackdrop()
+            }
             OverlayView(config: model.config, sample: model.currentSample,
                         frameSize: size)
             WidgetInteractionLayer(frameSize: size)
