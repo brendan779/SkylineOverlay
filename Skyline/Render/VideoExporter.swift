@@ -35,18 +35,21 @@ final class VideoExporter {
 
     func cancel() { cancelled = true }
 
-    /// Export the overlay for `log` to `url`. `clipDuration` limits the
-    /// export length (used for quick test renders); nil exports the whole log.
+    /// Export the overlay for `log` to `url`.
+    ///
+    /// `duration` sets the export length (the video's length when one is
+    /// loaded); nil uses the log's length. `timeOffset` shifts the telemetry
+    /// so the exported overlay lines up with the footage.
     func export(log: FlightLog, config: OverlayConfig, to url: URL,
-                clipDuration: Double? = nil,
+                duration: Double? = nil,
+                timeOffset: Double = 0,
                 progress: @escaping (Progress) -> Void) async throws {
         cancelled = false
         let out = config.output
         let width = out.width, height = out.height
         let fps = out.fps
-        let duration = min(log.duration(),
-                           clipDuration ?? .greatestFiniteMagnitude)
-        let totalFrames = max(1, Int(duration * fps))
+        let totalDuration = duration ?? log.duration()
+        let totalFrames = max(1, Int(totalDuration * fps))
 
         try? FileManager.default.removeItem(at: url)
         guard let writer = try? AVAssetWriter(outputURL: url, fileType: .mov) else {
@@ -91,8 +94,9 @@ final class VideoExporter {
             while !input.isReadyForMoreMediaData {
                 try await Task.sleep(nanoseconds: 8_000_000)
             }
-            let sample = TelemetrySample.make(from: log,
-                                              at: Double(frame) / fps,
+            let telemetryTime = min(max(Double(frame) / fps + timeOffset, 0),
+                                    log.duration())
+            let sample = TelemetrySample.make(from: log, at: telemetryTime,
                                               config: config)
             let buffer = try renderFrame(config: config, sample: sample,
                                          width: width, height: height,

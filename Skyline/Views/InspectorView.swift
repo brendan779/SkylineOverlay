@@ -45,8 +45,40 @@ struct InspectorControls: View {
             if let kind = model.selectedWidget {
                 widgetEditor(kind)
             }
+            syncSection
             outputSection
         }
+    }
+
+    // ── Sync ─────────────────────────────────────────────────────────────
+    private var syncSection: some View {
+        section("Sync") {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Telemetry offset")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textSecondary)
+                    Spacer()
+                    Text(String(format: "%+.1f s", model.timeOffset))
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(Theme.textMuted)
+                }
+                Slider(value: offsetBinding, in: -30...30)
+                    .controlSize(.mini)
+                HStack(spacing: 8) {
+                    Stepper("", value: offsetBinding, in: -600...600, step: 0.1)
+                        .labelsHidden()
+                    Text("Nudge ±0.1 s to sync the overlay to the video")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Theme.textMuted)
+                    Spacer()
+                }
+            }
+        }
+    }
+
+    private var offsetBinding: Binding<Double> {
+        Binding { model.timeOffset } set: { model.timeOffset = $0 }
     }
 
     // ── Widget list ──────────────────────────────────────────────────────
