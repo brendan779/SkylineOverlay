@@ -40,10 +40,13 @@ struct PreviewPane: View {
             VideoBackdrop()
             OverlayView(config: model.config, sample: model.currentSample,
                         frameSize: size)
+            WidgetInteractionLayer(frameSize: size)
         }
         .frame(width: size.width, height: size.height)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .shadow(color: .black.opacity(0.5), radius: 20, y: 12)
+        .contentShape(Rectangle())
+        .onTapGesture { model.selectedWidget = nil }
     }
 
     private func emptyFrame(_ size: CGSize) -> some View {

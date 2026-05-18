@@ -1,5 +1,30 @@
 import SwiftUI
 
+/// Maps widget settings to pixel rectangles within a frame. Shared by the
+/// renderer and the preview's drag layer so hit areas match what's drawn.
+struct OverlayLayout {
+    var config: OverlayConfig
+    var frameSize: CGSize
+
+    static let referenceHeight: CGFloat = 1080
+
+    private var outputScale: CGFloat { frameSize.height / Self.referenceHeight }
+
+    func size(for kind: WidgetKind) -> CGSize {
+        let s = config[kind].scale
+        return CGSize(width: kind.designSize.width * s * outputScale,
+                      height: kind.designSize.height * s * outputScale)
+    }
+
+    func rect(for kind: WidgetKind) -> CGRect {
+        let size = size(for: kind)
+        let pos = config[kind].position
+        return CGRect(x: pos.x * frameSize.width - size.width / 2,
+                      y: pos.y * frameSize.height - size.height / 2,
+                      width: size.width, height: size.height)
+    }
+}
+
 /// Composes every enabled widget over a transparent frame.
 ///
 /// Used for both the live preview and (rasterised) video export, so the two
@@ -10,30 +35,20 @@ struct OverlayView: View {
     var sample: TelemetrySample
     var frameSize: CGSize
 
-    private static let referenceHeight: CGFloat = 1080
-
-    private var outputScale: CGFloat { frameSize.height / Self.referenceHeight }
-
     var body: some View {
+        let layout = OverlayLayout(config: config, frameSize: frameSize)
         ZStack(alignment: .topLeading) {
             ForEach(WidgetKind.allCases) { kind in
                 let settings = config[kind]
                 if settings.isEnabled {
-                    let size = pixelSize(for: kind, settings: settings)
-                    widget(kind, settings: settings, size: size)
+                    let rect = layout.rect(for: kind)
+                    widget(kind, settings: settings, size: rect.size)
                         .opacity(settings.opacity)
-                        .position(x: settings.position.x * frameSize.width,
-                                  y: settings.position.y * frameSize.height)
+                        .position(x: rect.midX, y: rect.midY)
                 }
             }
         }
         .frame(width: frameSize.width, height: frameSize.height)
-    }
-
-    private func pixelSize(for kind: WidgetKind,
-                           settings: WidgetSettings) -> CGSize {
-        CGSize(width: kind.designSize.width * settings.scale * outputScale,
-               height: kind.designSize.height * settings.scale * outputScale)
     }
 
     @ViewBuilder
