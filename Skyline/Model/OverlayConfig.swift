@@ -108,20 +108,22 @@ struct WidgetSettings: Codable, Equatable {
             background: theme.background)
     }
 
-    /// Default placements reproduce the renderer's lower-third layout.
+    /// Default placements reproduce the renderer's lower-third layout: an
+    /// evenly spread main band, the rangefinder tucked into the gap below it,
+    /// and the flight mode / messages stacked at the top right.
     private static func defaultPosition(for kind: WidgetKind) -> CGPoint {
         switch kind {
-        case .groundSpeed:   return CGPoint(x: 0.08, y: 0.86)
-        case .airSpeed:      return CGPoint(x: 0.20, y: 0.86)
-        case .wind:          return CGPoint(x: 0.31, y: 0.86)
-        case .altitude:      return CGPoint(x: 0.40, y: 0.86)
-        case .attitude:      return CGPoint(x: 0.50, y: 0.84)
-        case .heading:       return CGPoint(x: 0.50, y: 0.94)
-        case .verticalSpeed: return CGPoint(x: 0.60, y: 0.86)
-        case .motors:        return CGPoint(x: 0.70, y: 0.85)
-        case .rangefinder:   return CGPoint(x: 0.40, y: 0.72)
-        case .flightMode:    return CGPoint(x: 0.86, y: 0.82)
-        case .messages:      return CGPoint(x: 0.83, y: 0.91)
+        case .groundSpeed:   return CGPoint(x: 0.055, y: 0.84)
+        case .airSpeed:      return CGPoint(x: 0.125, y: 0.84)
+        case .wind:          return CGPoint(x: 0.205, y: 0.84)
+        case .altitude:      return CGPoint(x: 0.305, y: 0.84)
+        case .rangefinder:   return CGPoint(x: 0.390, y: 0.90)
+        case .attitude:      return CGPoint(x: 0.500, y: 0.83)
+        case .heading:       return CGPoint(x: 0.500, y: 0.93)
+        case .verticalSpeed: return CGPoint(x: 0.620, y: 0.84)
+        case .motors:        return CGPoint(x: 0.725, y: 0.84)
+        case .flightMode:    return CGPoint(x: 0.930, y: 0.74)
+        case .messages:      return CGPoint(x: 0.905, y: 0.83)
         }
     }
 }

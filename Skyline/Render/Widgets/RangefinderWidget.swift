@@ -23,7 +23,7 @@ struct RangefinderWidget: View {
         ctx.fill(panel, with: .color(settings.background.color))
         ctx.stroke(panel, with: .color(.white.opacity(0.22)), lineWidth: 1)
 
-        ctx.draw(Text("AGL").font(.hud(h * 0.19))
+        ctx.draw(Text("RNGFND").font(.hud(h * 0.19))
                     .foregroundStyle(theme.label.color),
                  at: CGPoint(x: w / 2, y: h * 0.27), anchor: .center)
 
