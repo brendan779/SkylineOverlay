@@ -10,6 +10,8 @@ struct TapeWidget: View {
     var value: Double
     var unit: String
     var label: String
+    /// Threshold colour for the current value, or nil to use the accent.
+    var thresholdColor: Color? = nil
     var size: CGSize
 
     /// Value range spanned by the visible rail.
@@ -25,7 +27,8 @@ struct TapeWidget: View {
     private func draw(_ ctx: inout GraphicsContext, _ sz: CGSize) {
         let w = sz.width
         let h = sz.height
-        let accent = settings.accent.color
+        let accent = thresholdColor ?? settings.accent.color
+        let valueColor = thresholdColor ?? .white
 
         // Panel
         let panel = Path(roundedRect: CGRect(x: 0, y: 0, width: w, height: h),
@@ -91,7 +94,7 @@ struct TapeWidget: View {
         // Value + unit
         ctx.draw(Text(String(format: "%.0f", value))
                     .font(condensed(h * 0.21, weight: .semibold))
-                    .foregroundStyle(.white),
+                    .foregroundStyle(valueColor),
                  at: CGPoint(x: boxX + boxW / 2, y: midY - boxH * 0.10),
                  anchor: .center)
         ctx.draw(Text(unit).font(condensed(h * 0.085))

@@ -14,6 +14,10 @@ enum WidgetKind: String, CaseIterable, Codable, Identifiable {
     case verticalSpeed
     case motors
     case rangefinder
+    case battery
+    case gforce
+    case distance
+    case map
     case flightMode
     case messages
 
@@ -30,6 +34,10 @@ enum WidgetKind: String, CaseIterable, Codable, Identifiable {
         case .verticalSpeed: return "Vertical Speed"
         case .motors:        return "Motors"
         case .rangefinder:   return "Rangefinder"
+        case .battery:       return "Battery"
+        case .gforce:        return "G-Force"
+        case .distance:      return "Distance from Home"
+        case .map:           return "GPS Map"
         case .flightMode:    return "Flight Mode"
         case .messages:      return "Messages"
         }
@@ -54,10 +62,35 @@ enum WidgetKind: String, CaseIterable, Codable, Identifiable {
             return CGSize(width: 150, height: 150)
         case .rangefinder:
             return CGSize(width: 120, height: 70)
+        case .battery:
+            return CGSize(width: 210, height: 104)
+        case .gforce:
+            return CGSize(width: 150, height: 178)
+        case .distance:
+            return CGSize(width: 158, height: 88)
+        case .map:
+            return CGSize(width: 300, height: 190)
         case .flightMode:
             return CGSize(width: 190, height: 46)
         case .messages:
             return CGSize(width: 360, height: 90)
+        }
+    }
+
+    /// Whether this widget can colour itself from a `ThresholdProfile`.
+    var supportsThreshold: Bool {
+        switch self {
+        case .groundSpeed, .airSpeed, .altitude, .battery, .gforce: return true
+        default: return false
+        }
+    }
+
+    /// Step size for editing threshold stop values in the Inspector.
+    var thresholdStep: Double {
+        switch self {
+        case .battery: return 0.1
+        case .gforce:  return 0.25
+        default:       return 5
         }
     }
 }

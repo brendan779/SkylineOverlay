@@ -1,5 +1,12 @@
 import SwiftUI
 
+extension Array {
+    /// Bounds-checked element access — `nil` when the index is out of range.
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
+    }
+}
+
 /// Right pane — header chrome wrapping the scrollable overlay controls.
 struct InspectorView: View {
     var body: some View {
@@ -127,18 +134,252 @@ struct InspectorControls: View {
     // ── Per-widget editor ────────────────────────────────────────────────
     private func widgetEditor(_ kind: WidgetKind) -> some View {
         let w = binding(kind)
-        return section(kind.displayName) {
-            VStack(alignment: .leading, spacing: 12) {
-                sliderRow("Scale", w.scale,
-                          range: WidgetSettings.scaleRange, format: "%.2f×")
-                sliderRow("Opacity", w.opacity, range: 0...1, format: "%.0f%%",
-                          display: { $0 * 100 })
-                sliderRow("Position X", positionX(kind), range: 0...1, format: "%.2f")
-                sliderRow("Position Y", positionY(kind), range: 0...1, format: "%.2f")
-                colorRow("Accent", accentColor(kind))
-                colorRow("Background", backgroundColor(kind))
+        return VStack(alignment: .leading, spacing: 20) {
+            section(kind.displayName) {
+                VStack(alignment: .leading, spacing: 12) {
+                    sliderRow("Scale", w.scale,
+                              range: WidgetSettings.scaleRange, format: "%.2f×")
+                    sliderRow("Opacity", w.opacity, range: 0...1, format: "%.0f%%",
+                              display: { $0 * 100 })
+                    sliderRow("Position X", positionX(kind), range: 0...1,
+                              format: "%.2f")
+                    sliderRow("Position Y", positionY(kind), range: 0...1,
+                              format: "%.2f")
+                    colorRow("Accent", accentColor(kind))
+                    colorRow("Background", backgroundColor(kind))
+                    widgetExtras(kind)
+                }
+            }
+            if kind.supportsThreshold {
+                thresholdSection(kind)
             }
         }
+    }
+
+    // ── Threshold editor ─────────────────────────────────────────────────
+    private func thresholdSection(_ kind: WidgetKind) -> some View {
+        let profile = model.config.threshold(for: kind)
+        return section("Threshold Colours") {
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle(isOn: thresholdEnabled(kind)) {
+                    Text("Colour by value")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+
+                if profile.isEnabled {
+                    let presets = ThresholdProfile.presets(for: kind)
+                    if !presets.isEmpty {
+                        Menu("Load preset…") {
+                            ForEach(presets.indices, id: \.self) { i in
+                                Button(presets[i].name) {
+                                    var p = presets[i].profile
+                                    p.isEnabled = true
+                                    model.config.thresholds[kind] = p
+                                }
+                            }
+                        }
+                        .controlSize(.small)
+                        .fixedSize()
+                    }
+                    ForEach(profile.stops.indices, id: \.self) {
+                        thresholdStopRow(kind, index: $0)
+                    }
+                    Button { addThresholdStop(kind) } label: {
+                        Label("Add stop", systemImage: "plus")
+                            .font(.system(size: 11))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.accent)
+                }
+            }
+        }
+    }
+
+    private func thresholdStopRow(_ kind: WidgetKind, index: Int) -> some View {
+        let value = model.config.threshold(for: kind).stops[safe: index]?.value ?? 0
+        return HStack(spacing: 6) {
+            ColorPicker("", selection: stopColor(kind, index),
+                        supportsOpacity: true)
+                .labelsHidden()
+            Text(String(format: "%.2f", value))
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(Theme.textMuted)
+                .frame(width: 48, alignment: .leading)
+            Stepper("", value: stopValue(kind, index), step: kind.thresholdStep)
+                .labelsHidden()
+            Spacer()
+            Button { removeThresholdStop(kind, index) } label: {
+                Image(systemName: "minus.circle").font(.system(size: 11))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Theme.textMuted)
+        }
+    }
+
+    // ── Threshold bindings + mutations ───────────────────────────────────
+    private func thresholdEnabled(_ kind: WidgetKind) -> Binding<Bool> {
+        Binding {
+            model.config.threshold(for: kind).isEnabled
+        } set: { on in
+            var p = model.config.threshold(for: kind)
+            p.isEnabled = on
+            // First time on with no stops: seed from the default preset.
+            if on, p.stops.isEmpty,
+               let preset = ThresholdProfile.presets(for: kind).first {
+                p = preset.profile
+                p.isEnabled = true
+            }
+            model.config.thresholds[kind] = p
+        }
+    }
+
+    private func stopValue(_ kind: WidgetKind, _ i: Int) -> Binding<Double> {
+        Binding {
+            model.config.threshold(for: kind).stops[safe: i]?.value ?? 0
+        } set: { v in
+            var p = model.config.threshold(for: kind)
+            guard i < p.stops.count else { return }
+            p.stops[i].value = v
+            model.config.thresholds[kind] = p
+        }
+    }
+
+    private func stopColor(_ kind: WidgetKind, _ i: Int) -> Binding<Color> {
+        Binding {
+            model.config.threshold(for: kind).stops[safe: i]?.color.color ?? .white
+        } set: { c in
+            var p = model.config.threshold(for: kind)
+            guard i < p.stops.count else { return }
+            p.stops[i].color = RGBAColor(c)
+            model.config.thresholds[kind] = p
+        }
+    }
+
+    private func addThresholdStop(_ kind: WidgetKind) {
+        var p = model.config.threshold(for: kind)
+        let next = (p.stops.map(\.value).max() ?? 0) + kind.thresholdStep
+        p.stops.append(ThresholdStop(value: next, color: .white))
+        model.config.thresholds[kind] = p
+    }
+
+    private func removeThresholdStop(_ kind: WidgetKind, _ i: Int) {
+        var p = model.config.threshold(for: kind)
+        guard i < p.stops.count else { return }
+        p.stops.remove(at: i)
+        model.config.thresholds[kind] = p
+    }
+
+    /// Per-widget controls that only some widget kinds need.
+    @ViewBuilder
+    private func widgetExtras(_ kind: WidgetKind) -> some View {
+        switch kind {
+        case .battery:
+            sliderRow("Pack capacity", batteryCapacity,
+                      range: 500...20000, format: "%.0f mAh")
+        case .gforce:
+            pickerRow("Max scale", selection: gForceScale) {
+                ForEach([2.0, 4.0, 6.0, 8.0], id: \.self) {
+                    Text(String(format: "±%.0f g", $0)).tag($0)
+                }
+            }
+        case .distance:
+            pickerRow("Units", selection: distanceUnits) {
+                ForEach(DistanceUnit.allCases) { Text($0.label).tag($0) }
+            }
+            Toggle(isOn: showMaxDistance) {
+                Text("Show max reached")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+        case .map:
+            pickerRow("Map style", selection: mapStyle) {
+                ForEach(FlightMapStyle.allCases) { Text($0.label).tag($0) }
+            }
+            sliderRow("Zoom", mapZoom, range: 1...6, format: "%.1f×")
+            sliderRow("Trail", mapTrailSeconds, range: 0...120) {
+                $0 < 1 ? "Full path" : String(format: "%.0f s", $0)
+            }
+        case .groundSpeed, .altitude:
+            smoothingControls(kind, allowsKalman: true)
+        case .airSpeed:
+            smoothingControls(kind, allowsKalman: false)
+        default:
+            EmptyView()
+        }
+    }
+
+    /// Moving-average window slider, plus an optional Kalman toggle.
+    @ViewBuilder
+    private func smoothingControls(_ kind: WidgetKind,
+                                   allowsKalman: Bool) -> some View {
+        let useKalman = model.config.smoothing(for: kind).useKalman
+        if allowsKalman {
+            Toggle(isOn: smoothingKalman(kind)) {
+                Text("Kalman filter")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+        }
+        if !useKalman {
+            sliderRow("Smoothing", smoothingWindow(kind), range: 0...5) {
+                $0 < 0.05 ? "Off" : String(format: "%.1f s", $0)
+            }
+        }
+    }
+
+    private func smoothingWindow(_ kind: WidgetKind) -> Binding<Double> {
+        Binding {
+            model.config.smoothing(for: kind).window
+        } set: { v in
+            var s = model.config.smoothing(for: kind)
+            s.window = v
+            model.config.smoothing[kind] = s
+        }
+    }
+    private func smoothingKalman(_ kind: WidgetKind) -> Binding<Bool> {
+        Binding {
+            model.config.smoothing(for: kind).useKalman
+        } set: { on in
+            var s = model.config.smoothing(for: kind)
+            s.useKalman = on
+            model.config.smoothing[kind] = s
+        }
+    }
+
+    private var batteryCapacity: Binding<Double> {
+        Binding { model.config.batteryCapacity }
+            set: { model.config.batteryCapacity = $0 }
+    }
+    private var gForceScale: Binding<Double> {
+        Binding { model.config.gForceScale }
+            set: { model.config.gForceScale = $0 }
+    }
+    private var distanceUnits: Binding<DistanceUnit> {
+        Binding { model.config.distanceUnits }
+            set: { model.config.distanceUnits = $0 }
+    }
+    private var showMaxDistance: Binding<Bool> {
+        Binding { model.config.showMaxDistance }
+            set: { model.config.showMaxDistance = $0 }
+    }
+    private var mapStyle: Binding<FlightMapStyle> {
+        Binding { model.config.mapStyle }
+            set: { model.config.mapStyle = $0; model.refreshMapSnapshot() }
+    }
+    private var mapZoom: Binding<Double> {
+        Binding { model.config.mapZoom }
+            set: { model.config.mapZoom = $0 }
+    }
+    private var mapTrailSeconds: Binding<Double> {
+        Binding { model.config.mapTrailSeconds }
+            set: { model.config.mapTrailSeconds = $0 }
     }
 
     // ── Output ───────────────────────────────────────────────────────────
@@ -221,6 +462,22 @@ struct InspectorControls: View {
                     .foregroundStyle(Theme.textSecondary)
                 Spacer()
                 Text(String(format: format, display(value.wrappedValue)))
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Theme.textMuted)
+            }
+            Slider(value: value, in: range).controlSize(.mini)
+        }
+    }
+
+    private func sliderRow(_ label: String, _ value: Binding<Double>,
+                           range: ClosedRange<Double>,
+                           text: @escaping (Double) -> String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(label).font(.system(size: 11))
+                    .foregroundStyle(Theme.textSecondary)
+                Spacer()
+                Text(text(value.wrappedValue))
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(Theme.textMuted)
             }

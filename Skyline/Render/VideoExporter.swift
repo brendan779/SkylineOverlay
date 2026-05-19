@@ -1,6 +1,7 @@
 import AVFoundation
 import SwiftUI
 import CoreVideo
+import MapKit
 
 /// Renders the overlay to a transparent video file.
 ///
@@ -43,6 +44,7 @@ final class VideoExporter {
     func export(log: FlightLog, config: OverlayConfig, to url: URL,
                 duration: Double? = nil,
                 timeOffset: Double = 0,
+                mapSnapshot: FlightMapImage? = nil,
                 progress: @escaping (Progress) -> Void) async throws {
         cancelled = false
         let out = config.output
@@ -99,6 +101,7 @@ final class VideoExporter {
             let sample = TelemetrySample.make(from: log, at: telemetryTime,
                                               config: config)
             let buffer = try renderFrame(config: config, sample: sample,
+                                         mapSnapshot: mapSnapshot,
                                          width: width, height: height,
                                          pool: adaptor.pixelBufferPool)
             let pts = CMTime(value: CMTimeValue(frame), timescale: timescale)
@@ -121,10 +124,12 @@ final class VideoExporter {
 
     // ── Frame rasterisation ──────────────────────────────────────────────
     private func renderFrame(config: OverlayConfig, sample: TelemetrySample,
+                             mapSnapshot: FlightMapImage?,
                              width: Int, height: Int,
                              pool: CVPixelBufferPool?) throws -> CVPixelBuffer {
         let view = OverlayView(config: config, sample: sample,
-                               frameSize: CGSize(width: width, height: height))
+                               frameSize: CGSize(width: width, height: height),
+                               mapSnapshot: mapSnapshot)
         let renderer = ImageRenderer(content: view)
         renderer.isOpaque = false
         renderer.scale = 1

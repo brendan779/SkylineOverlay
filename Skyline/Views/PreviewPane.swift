@@ -49,7 +49,7 @@ struct PreviewPane: View {
                 VideoBackdrop()
             }
             OverlayView(config: model.config, sample: model.currentSample,
-                        frameSize: size)
+                        frameSize: size, mapSnapshot: model.mapSnapshot)
             WidgetInteractionLayer(frameSize: size)
         }
         .frame(width: size.width, height: size.height)

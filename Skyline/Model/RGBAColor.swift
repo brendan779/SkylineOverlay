@@ -37,6 +37,15 @@ struct RGBAColor: Codable, Equatable, Hashable {
         RGBAColor(red, green, blue, a)
     }
 
+    /// Linear blend toward `other`; `fraction` 0 returns self, 1 returns other.
+    func lerp(to other: RGBAColor, _ fraction: Double) -> RGBAColor {
+        let f = max(0, min(1, fraction))
+        return RGBAColor(red   + (other.red   - red)   * f,
+                         green + (other.green - green) * f,
+                         blue  + (other.blue  - blue)  * f,
+                         alpha + (other.alpha - alpha) * f)
+    }
+
     static let white = RGBAColor(1, 1, 1)
     static let black = RGBAColor(0, 0, 0)
 }

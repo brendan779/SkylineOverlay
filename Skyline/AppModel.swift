@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import AVFoundation
+import MapKit
 import UniformTypeIdentifiers
 
 /// Root application state — the loaded flight log and optional video, the
@@ -64,6 +65,33 @@ final class AppModel {
     private var playbackTimer: Timer?
     private var lastTick: Date?
 
+    // ── GPS map snapshot ─────────────────────────────────────────────────
+    /// Cached MapKit render of the flight area for the GPS Map widget.
+    var mapSnapshot: FlightMapImage?
+    private var mapSnapshotTask: Task<Void, Never>?
+
+    /// Native size the map is snapshotted at — 5× the widget's design size,
+    /// so the widget stays crisp when a zoomed viewport pans across it.
+    private static let mapSnapshotSize = CGSize(width: 1500, height: 950)
+
+    /// Re-render the GPS map for the current track and style. Zoom is a
+    /// display-only viewport transform, so it does not trigger a re-render.
+    func refreshMapSnapshot() {
+        mapSnapshotTask?.cancel()
+        guard let log = flightLog, !log.track.isEmpty else {
+            mapSnapshot = nil
+            return
+        }
+        let track = log.track
+        let style = config.mapStyle
+        mapSnapshotTask = Task { @MainActor in
+            let snap = await FlightMapSnapshotter.snapshot(
+                track: track, style: style, size: Self.mapSnapshotSize)
+            if Task.isCancelled { return }
+            self.mapSnapshot = snap
+        }
+    }
+
     // ── Log loading ──────────────────────────────────────────────────────
     func loadLog(url: URL) {
         do {
@@ -71,9 +99,11 @@ final class AppModel {
             logURL = url
             loadError = nil
             scrubTime = 0
+            refreshMapSnapshot()
         } catch {
             flightLog = nil
             logURL = nil
+            mapSnapshot = nil
             loadError = "Couldn't read \(url.lastPathComponent) — "
                 + "the log may be truncated or from an unsupported firmware."
         }
@@ -246,7 +276,8 @@ final class AppModel {
             do {
                 try await exporter.export(log: log, config: config, to: url,
                                           duration: exportDuration,
-                                          timeOffset: offset) { p in
+                                          timeOffset: offset,
+                                          mapSnapshot: mapSnapshot) { p in
                     self.renderPhase = .rendering(p.fraction)
                 }
                 renderPhase = .done(url)

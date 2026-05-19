@@ -23,10 +23,43 @@ struct TelemetrySample {
     var hasWind: Bool
     var messages: [Message]
 
+    // ── GPS / position ───────────────────────────────────────────────────
+    var coordinate: GeoPoint?       // current flight position
+    var hasGPS: Bool
+    var track: [TrackPoint]         // the whole flight path
+    var home: GeoPoint?             // home position, if known
+    var distanceFromHome: Double    // m, 2D ground distance
+    var maxDistanceFromHome: Double // m, greatest reached over the flight
+    var hasHome: Bool
+
+    // ── Battery ──────────────────────────────────────────────────────────
+    var batteryVoltage: Double      // V
+    var batteryCurrent: Double      // A
+    var batteryConsumed: Double     // mAh drawn
+    var hasBattery: Bool
+
+    // ── G-force ──────────────────────────────────────────────────────────
+    var gForce: GForce
+    var hasIMU: Bool
+
     struct Message {
         var text: String
         var severity: Int
         var age: Double         // seconds since the message appeared
+    }
+
+    /// Accelerometer load in g. Lateral X/Y drive the 2-axis ball; vertical
+    /// is the classic 1-g-at-rest load. `peakLateral` is the running maximum
+    /// of the lateral magnitude up to the current playhead.
+    struct GForce {
+        var lateralX: Double
+        var lateralY: Double
+        var vertical: Double
+        var peakLateral: Double
+
+        var lateralMagnitude: Double {
+            (lateralX * lateralX + lateralY * lateralY).squareRoot()
+        }
     }
 
     /// One RCOU channel: its PWM output and a fade level that drops to 0 a
@@ -39,8 +72,17 @@ struct TelemetrySample {
     /// Sample `log` at telemetry time `t`.
     static func make(from log: FlightLog, at t: Double,
                      config: OverlayConfig) -> TelemetrySample {
-        let altSeries = config.altitudeDatum == .absolute
-            ? log.altitudeAbs : log.altitude
+        let absolute = config.altitudeDatum == .absolute
+        let altSeries = absolute ? log.altitudeAbs : log.altitude
+
+        // Per-widget smoothing: Kalman uses the precomputed channel, the
+        // moving average filters at sample time over the configured window.
+        func smoothed(_ kind: WidgetKind, _ series: FlightLog.Series,
+                      kalman: FlightLog.Series? = nil) -> Double {
+            let s = config.smoothing(for: kind)
+            if s.useKalman, let kalman { return log.sample(kalman, at: t) }
+            return log.sampleSmoothed(series, at: t, window: s.window)
+        }
 
         var verticalSpeed = 0.0
         if log.altitude.count >= 2 {
@@ -68,11 +110,22 @@ struct TelemetrySample {
         let messages = log.messagesAt(t, window: config.messageDisplaySeconds)
             .map { Message(text: $0.text, severity: $0.severity, age: t - $0.t) }
 
+        let g = FlightLog.standardGravity
+        let gForce = GForce(
+            lateralX: log.sample(log.accelX, at: t) / g,
+            lateralY: log.sample(log.accelY, at: t) / g,
+            // AccZ reads ≈ −g at rest; negate so level flight is +1 g.
+            vertical: -log.sample(log.accelZ, at: t) / g,
+            peakLateral: log.sample(log.peakLateralG, at: t))
+
         return TelemetrySample(
             time: t,
-            groundSpeed: log.sample(log.gpsSpeed, at: t),
-            airSpeed: log.sample(log.airSpeed, at: t),
-            altitude: log.sample(altSeries, at: t),
+            groundSpeed: smoothed(.groundSpeed, log.gpsSpeed,
+                                  kalman: log.kalmanGpsSpeed),
+            airSpeed: smoothed(.airSpeed, log.airSpeed),
+            altitude: smoothed(.altitude, altSeries,
+                               kalman: absolute ? log.kalmanAltitudeAbs
+                                                : log.kalmanAltitude),
             verticalSpeed: verticalSpeed,
             pitch: log.sample(log.pitch, at: t),
             roll: log.sample(log.roll, at: t),
@@ -85,7 +138,20 @@ struct TelemetrySample {
             windVN: windVN,
             windVE: windVE,
             hasWind: !log.windVN.isEmpty && windSpeed >= 0.5,
-            messages: messages)
+            messages: messages,
+            coordinate: log.coordinate(at: t),
+            hasGPS: !log.track.isEmpty,
+            track: log.track,
+            home: log.home,
+            distanceFromHome: log.sample(log.distanceFromHome, at: t),
+            maxDistanceFromHome: log.maxDistanceFromHome,
+            hasHome: log.home != nil,
+            batteryVoltage: log.sample(log.batteryVoltage, at: t),
+            batteryCurrent: log.sample(log.batteryCurrent, at: t),
+            batteryConsumed: log.sample(log.batteryConsumed, at: t),
+            hasBattery: !log.batteryVoltage.isEmpty,
+            gForce: gForce,
+            hasIMU: !log.accelZ.isEmpty)
     }
 
     /// Sample one RCOU channel and pair it with its drop-out fade level.
@@ -111,5 +177,11 @@ struct TelemetrySample {
         rangefinder: 0, rangefinderOpacity: 0,
         throttle: MotorBar(value: 1000, opacity: 1),
         liftMotors: Array(repeating: MotorBar(value: 1000, opacity: 1), count: 4),
-        windVN: 0, windVE: 0, hasWind: false, messages: [])
+        windVN: 0, windVE: 0, hasWind: false, messages: [],
+        coordinate: nil, hasGPS: false, track: [], home: nil,
+        distanceFromHome: 0, maxDistanceFromHome: 0, hasHome: false,
+        batteryVoltage: 0, batteryCurrent: 0, batteryConsumed: 0,
+        hasBattery: false,
+        gForce: GForce(lateralX: 0, lateralY: 0, vertical: 1, peakLateral: 0),
+        hasIMU: false)
 }
