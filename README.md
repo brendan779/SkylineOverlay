@@ -59,5 +59,10 @@ to upload to a GitHub release.
 
 ## License
 
+Skyline is free software, licensed under the **GNU General Public License
+v3.0**. You may use, modify and redistribute it under those terms; any
+distributed derivative must also be released under the GPL v3. It comes with
+no warranty. See the [LICENSE](LICENSE) file for the full text.
+
 Skyline is unaffiliated with ArduPilot and DJI. Use overlays at your own
 discretion.
