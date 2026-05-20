@@ -1,14 +1,16 @@
 import SwiftUI
 
-/// Five RCOU motor bars in one widget — the throttle (servo 5), set a little
-/// apart on the left, and the four lift motors (servos 7–10) grouped tight on
-/// the right. Each bar spans the 1000–2000 µs PWM range, filled from the
-/// bottom, and fades out on its own once its channel goes quiet.
+/// A row of RCOU motor bars — one per channel the user has configured for
+/// the Motors widget. Each bar spans the 1000–2000 µs PWM range filled from
+/// the bottom, with the channel's label beneath, and fades on its own when
+/// that channel goes quiet.
+///
+/// Width is driven by the layout (the widget grows wider with more
+/// channels), so the bars themselves stay a consistent visual size.
 struct MotorBarWidget: View {
     var settings: WidgetSettings
     var theme: OverlayTheme
-    var throttle: TelemetrySample.MotorBar
-    var liftMotors: [TelemetrySample.MotorBar]
+    var motors: [TelemetrySample.MotorBar]
     var size: CGSize
 
     var body: some View {
@@ -19,7 +21,7 @@ struct MotorBarWidget: View {
     private func draw(_ ctx: inout GraphicsContext, _ sz: CGSize) {
         let w = sz.width, h = sz.height
         let panel = Path(roundedRect: CGRect(x: 0, y: 0, width: w, height: h),
-                         cornerRadius: w * 0.10)
+                         cornerRadius: min(w, h) * 0.10)
         ctx.fill(panel, with: .color(settings.background.color))
         ctx.stroke(panel, with: .color(.white.opacity(0.22)), lineWidth: 1)
 
@@ -27,31 +29,26 @@ struct MotorBarWidget: View {
                     .foregroundStyle(theme.label.color),
                  at: CGPoint(x: w / 2, y: h * 0.10), anchor: .center)
 
-        let px = w * 0.09
-        let avail = w - 2 * px
-        let bw = avail * 0.135
-        let gap = bw * 0.40
+        guard !motors.isEmpty else { return }
+
+        let count = CGFloat(motors.count)
+        let sidePad = w * 0.10
+        let avail = max(0, w - 2 * sidePad)
+        // Reserve ~25% of the lane for gaps; the rest is bar.
+        let lane = avail / count
+        let bw = max(4, lane * 0.75)
         let y0 = h * 0.22, y1 = h * 0.78
 
-        // Throttle — alone on the left, with breathing room.
-        drawBar(&ctx, cx: px + bw / 2, bw: bw, y0: y0, y1: y1, h: h,
-                motor: throttle, label: "THR")
-
-        // Lift motors — a tight group flush to the right edge.
-        let groupWidth = CGFloat(liftMotors.count) * bw
-            + CGFloat(max(0, liftMotors.count - 1)) * gap
-        let groupLeft = px + avail - groupWidth
-        for (i, motor) in liftMotors.enumerated() {
-            let cx = groupLeft + bw / 2 + CGFloat(i) * (bw + gap)
-            drawBar(&ctx, cx: cx, bw: bw, y0: y0, y1: y1, h: h,
-                    motor: motor, label: "\(7 + i)")
+        for (i, motor) in motors.enumerated() {
+            let cx = sidePad + lane * (CGFloat(i) + 0.5)
+            drawBar(&ctx, cx: cx, bw: bw, y0: y0, y1: y1, h: h, motor: motor)
         }
     }
 
     private func drawBar(_ ctx: inout GraphicsContext,
                          cx: CGFloat, bw: CGFloat,
                          y0: CGFloat, y1: CGFloat, h: CGFloat,
-                         motor: TelemetrySample.MotorBar, label: String) {
+                         motor: TelemetrySample.MotorBar) {
         var layer = ctx
         layer.opacity = motor.opacity
 
@@ -70,7 +67,7 @@ struct MotorBarWidget: View {
                        with: .color(settings.accent.color))
         }
 
-        layer.draw(Text(label).font(.hud(h * 0.085))
+        layer.draw(Text(motor.label).font(.hud(h * 0.085))
                     .foregroundStyle(theme.label.color),
                    at: CGPoint(x: cx, y: y1 + h * 0.11), anchor: .center)
     }

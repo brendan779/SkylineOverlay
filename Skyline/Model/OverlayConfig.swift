@@ -37,6 +37,87 @@ enum DistanceUnit: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+// ── Motors widget ────────────────────────────────────────────────────────
+
+/// ArduPilot SERVO function IDs we recognise for the Motors widget. Maps to
+/// `SRV_Channel::Aux_servo_function_t` constants — Throttle and Motor1..12.
+enum ServoFunction {
+    static let throttle = 70
+    /// `k_motor1`…`k_motor8` (function IDs 33–40).
+    static let motors1to8 = Array(33...40)
+    /// `k_motor9`…`k_motor12` (function IDs 81–84).
+    static let motors9to12 = Array(81...84)
+
+    /// Conventional bar label for a known function ID, or nil if unknown.
+    static func label(for function: Int) -> String? {
+        if function == throttle { return "THR" }
+        if let n = motors1to8.firstIndex(of: function) {
+            return "M\(n + 1)"
+        }
+        if let n = motors9to12.firstIndex(of: function) {
+            return "M\(n + 9)"
+        }
+        return nil
+    }
+}
+
+/// One bar in the Motors widget — the RCOU channel to read and the label to
+/// draw above its bar.
+struct MotorChannelEntry: Codable, Equatable, Identifiable {
+    var id: UUID
+    var channel: Int       // RCOU channel number (1-based)
+    var label: String
+
+    init(channel: Int, label: String, id: UUID = UUID()) {
+        self.id = id
+        self.channel = channel
+        self.label = label
+    }
+}
+
+/// What the Motors widget displays — an ordered list of channels. The widget
+/// renders one vertical bar per entry, and its width scales with the count.
+struct MotorWidgetConfig: Codable, Equatable {
+    var channels: [MotorChannelEntry]
+
+    /// Original Skyline layout (a quadplane): throttle on C5, lifts on C7–10.
+    static let factoryDefault = MotorWidgetConfig(channels: [
+        MotorChannelEntry(channel: 5,  label: "THR"),
+        MotorChannelEntry(channel: 7,  label: "M1"),
+        MotorChannelEntry(channel: 8,  label: "M2"),
+        MotorChannelEntry(channel: 9,  label: "M3"),
+        MotorChannelEntry(channel: 10, label: "M4"),
+    ])
+
+    /// True when the channel/label list is identical to the factory default
+    /// (ignoring UUIDs) — i.e. the user hasn't customised it. Used to decide
+    /// whether to overwrite with PARM-derived auto-detection on log load.
+    var matchesFactoryDefault: Bool {
+        let mine = channels.map { ($0.channel, $0.label) }
+        let theirs = Self.factoryDefault.channels.map { ($0.channel, $0.label) }
+        return mine.elementsEqual(theirs) { $0 == $1 }
+    }
+
+    /// Build a config from the SERVO_FUNCTION map extracted from a log's
+    /// `PARM` messages — `[channel: function id]`. Returns nil when nothing
+    /// recognisable was found, so the caller can fall back to a default.
+    static func fromServoFunctions(_ funcs: [Int: Int]) -> MotorWidgetConfig? {
+        var entries: [MotorChannelEntry] = []
+        // Throttle first.
+        if let c = funcs.first(where: { $0.value == ServoFunction.throttle })?.key {
+            entries.append(MotorChannelEntry(channel: c, label: "THR"))
+        }
+        // Motors in numeric order.
+        let ordered = ServoFunction.motors1to8 + ServoFunction.motors9to12
+        for (i, fn) in ordered.enumerated() {
+            if let c = funcs.first(where: { $0.value == fn })?.key {
+                entries.append(MotorChannelEntry(channel: c, label: "M\(i + 1)"))
+            }
+        }
+        return entries.isEmpty ? nil : MotorWidgetConfig(channels: entries)
+    }
+}
+
 /// Per-widget smoothing of the channel it displays.
 struct SmoothingSettings: Codable, Equatable {
     /// Moving-average window in seconds; 0 disables smoothing.
@@ -201,6 +282,9 @@ final class OverlayConfig {
     var mapZoom: Double
     /// Trail length in seconds; 0 draws the full flight path.
     var mapTrailSeconds: Double
+    /// Channels the Motors widget displays — auto-detected from the log's
+    /// PARM messages on load, or user-edited in the Inspector.
+    var motorWidget: MotorWidgetConfig
     var widgets: [WidgetKind: WidgetSettings]
     /// Per-widget threshold colour profiles.
     var thresholds: [WidgetKind: ThresholdProfile]
@@ -219,6 +303,7 @@ final class OverlayConfig {
          mapStyle: FlightMapStyle = .standard,
          mapZoom: Double = 1,
          mapTrailSeconds: Double = 0,
+         motorWidget: MotorWidgetConfig = .factoryDefault,
          widgets: [WidgetKind: WidgetSettings]? = nil,
          thresholds: [WidgetKind: ThresholdProfile] = [:],
          smoothing: [WidgetKind: SmoothingSettings] = [:]) {
@@ -234,6 +319,7 @@ final class OverlayConfig {
         self.mapStyle = mapStyle
         self.mapZoom = mapZoom
         self.mapTrailSeconds = mapTrailSeconds
+        self.motorWidget = motorWidget
         self.thresholds = thresholds
         self.smoothing = smoothing
         if let widgets {
@@ -281,6 +367,7 @@ extension OverlayConfig {
         var mapStyle: FlightMapStyle?
         var mapZoom: Double?
         var mapTrailSeconds: Double?
+        var motorWidget: MotorWidgetConfig?
         var widgets: [WidgetKind: WidgetSettings]
         var thresholds: [WidgetKind: ThresholdProfile]?
         var smoothing: [WidgetKind: SmoothingSettings]?
@@ -299,6 +386,7 @@ extension OverlayConfig {
                  mapStyle: mapStyle,
                  mapZoom: mapZoom,
                  mapTrailSeconds: mapTrailSeconds,
+                 motorWidget: motorWidget,
                  widgets: widgets,
                  thresholds: thresholds,
                  smoothing: smoothing)
@@ -317,6 +405,7 @@ extension OverlayConfig {
                   mapStyle: snapshot.mapStyle ?? .standard,
                   mapZoom: snapshot.mapZoom ?? 1,
                   mapTrailSeconds: snapshot.mapTrailSeconds ?? 0,
+                  motorWidget: snapshot.motorWidget ?? .factoryDefault,
                   widgets: snapshot.widgets,
                   thresholds: snapshot.thresholds ?? [:],
                   smoothing: snapshot.smoothing ?? [:])

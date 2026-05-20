@@ -16,8 +16,10 @@ struct TelemetrySample {
     var mode: String
     var rangefinder: Double         // m AGL; meaningful while rangefinderOpacity > 0
     var rangefinderOpacity: Double  // fades to 0 when readings stop
-    var throttle: MotorBar          // RCOU servo 5
-    var liftMotors: [MotorBar]      // RCOU servos 7…10
+    /// One bar per entry in `config.motorWidget.channels`, in order, each
+    /// carrying its label and the live PWM / fade for the corresponding
+    /// RCOU channel. Replaces the old hardcoded throttle + 4 lift motors.
+    var motors: [MotorBar]
     var windVN: Double          // m/s, wind velocity north
     var windVE: Double          // m/s, wind velocity east
     var hasWind: Bool
@@ -62,9 +64,11 @@ struct TelemetrySample {
         }
     }
 
-    /// One RCOU channel: its PWM output and a fade level that drops to 0 a
-    /// second after the channel falls below the live threshold.
+    /// One RCOU channel: the label drawn under its bar, the PWM output and
+    /// a fade level that drops to 0 a second after the channel falls below
+    /// the live threshold.
     struct MotorBar {
+        var label: String       // shown below the bar
         var value: Double       // servo PWM, µs (≈1000…2000)
         var opacity: Double     // 0…1
     }
@@ -100,8 +104,18 @@ struct TelemetrySample {
         let rangefinderOpacity = fade(
             log.rangefinderFade.secondsSinceLive(at: t), hold: 2.0, ramp: 0.5)
 
-        let throttle = motorBar(log.motorThrottle, log: log, at: t)
-        let liftMotors = log.motorLift.map { motorBar($0, log: log, at: t) }
+        // Build one MotorBar per configured channel. Missing channels (e.g.
+        // the user added one the log doesn't carry) render as an empty bar.
+        let motors = config.motorWidget.channels.map { entry -> MotorBar in
+            guard let series = log.rcouChannels[entry.channel] else {
+                return MotorBar(label: entry.label, value: 1000, opacity: 0)
+            }
+            return MotorBar(
+                label: entry.label,
+                value: log.sample(series.samples, at: t),
+                opacity: fade(series.secondsSinceLive(at: t),
+                              hold: 1.0, ramp: 0.4))
+        }
 
         let windVN = log.windVN.isEmpty ? 0 : log.sample(log.windVN, at: t)
         let windVE = log.windVE.isEmpty ? 0 : log.sample(log.windVE, at: t)
@@ -133,8 +147,7 @@ struct TelemetrySample {
             mode: log.modeAt(t),
             rangefinder: rangefinder,
             rangefinderOpacity: rangefinderOpacity,
-            throttle: throttle,
-            liftMotors: liftMotors,
+            motors: motors,
             windVN: windVN,
             windVE: windVE,
             hasWind: !log.windVN.isEmpty && windSpeed >= 0.5,
@@ -154,14 +167,6 @@ struct TelemetrySample {
             hasIMU: !log.accelZ.isEmpty)
     }
 
-    /// Sample one RCOU channel and pair it with its drop-out fade level.
-    private static func motorBar(_ channel: FadingSeries, log: FlightLog,
-                                 at t: Double) -> MotorBar {
-        MotorBar(value: log.sample(channel.samples, at: t),
-                 opacity: fade(channel.secondsSinceLive(at: t),
-                               hold: 1.0, ramp: 0.4))
-    }
-
     /// Full opacity while a channel is live; once it has been quiet for
     /// longer than `hold` seconds, ramp to 0 over the next `ramp` seconds.
     private static func fade(_ secondsSinceLive: Double,
@@ -175,8 +180,13 @@ struct TelemetrySample {
         time: 0, groundSpeed: 0, airSpeed: 0, altitude: 0, verticalSpeed: 0,
         pitch: 0, roll: 0, yaw: 0, mode: "—",
         rangefinder: 0, rangefinderOpacity: 0,
-        throttle: MotorBar(value: 1000, opacity: 1),
-        liftMotors: Array(repeating: MotorBar(value: 1000, opacity: 1), count: 4),
+        motors: [
+            MotorBar(label: "THR", value: 1000, opacity: 1),
+            MotorBar(label: "M1",  value: 1000, opacity: 1),
+            MotorBar(label: "M2",  value: 1000, opacity: 1),
+            MotorBar(label: "M3",  value: 1000, opacity: 1),
+            MotorBar(label: "M4",  value: 1000, opacity: 1),
+        ],
         windVN: 0, windVE: 0, hasWind: false, messages: [],
         coordinate: nil, hasGPS: false, track: [], home: nil,
         distanceFromHome: 0, maxDistanceFromHome: 0, hasHome: false,

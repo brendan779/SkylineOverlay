@@ -308,9 +308,103 @@ struct InspectorControls: View {
             smoothingControls(kind, allowsKalman: true)
         case .airSpeed:
             smoothingControls(kind, allowsKalman: false)
+        case .motors:
+            motorChannelEditor
         default:
             EmptyView()
         }
+    }
+
+    // ── Motors widget — channel editor ───────────────────────────────────
+    private var motorChannelEditor: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(model.config.motorWidget.channels.indices, id: \.self) {
+                motorChannelRow(index: $0)
+            }
+
+            HStack(spacing: 6) {
+                Button { addMotorChannel() } label: {
+                    Label("Add channel", systemImage: "plus")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.accent)
+
+                Spacer()
+
+                if let detected = MotorWidgetConfig.fromServoFunctions(
+                        model.flightLog?.servoFunctions ?? [:]) {
+                    Button { model.config.motorWidget = detected } label: {
+                        Text("Auto-detect")
+                            .font(.system(size: 10))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.textSecondary)
+                    .help("Restore channels from this log's SERVO_FUNCTION parameters")
+                }
+            }
+        }
+    }
+
+    private func motorChannelRow(index i: Int) -> some View {
+        let value = model.config.motorWidget.channels[safe: i]
+        let canRemove = model.config.motorWidget.channels.count > 1
+        return HStack(spacing: 6) {
+            TextField("Label", text: motorLabelBinding(i))
+                .textFieldStyle(.roundedBorder)
+                .controlSize(.mini)
+                .font(.system(size: 11, design: .monospaced))
+                .frame(width: 56)
+            Text("C\(value?.channel ?? 0)")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(Theme.textPrimary)
+                .frame(width: 30, alignment: .leading)
+            Stepper(value: motorChannelBinding(i), in: 1...16) {
+                EmptyView()
+            }
+            .labelsHidden()
+            .controlSize(.mini)
+            Spacer()
+            Button { removeMotorChannel(i) } label: {
+                Image(systemName: "minus.circle").font(.system(size: 11))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(canRemove ? Theme.textMuted
+                                       : Theme.textMuted.opacity(0.3))
+            .disabled(!canRemove)
+        }
+    }
+
+    private func motorLabelBinding(_ i: Int) -> Binding<String> {
+        Binding {
+            model.config.motorWidget.channels[safe: i]?.label ?? ""
+        } set: { v in
+            guard i < model.config.motorWidget.channels.count else { return }
+            model.config.motorWidget.channels[i].label = v
+        }
+    }
+
+    private func motorChannelBinding(_ i: Int) -> Binding<Int> {
+        Binding {
+            model.config.motorWidget.channels[safe: i]?.channel ?? 1
+        } set: { v in
+            guard i < model.config.motorWidget.channels.count else { return }
+            model.config.motorWidget.channels[i].channel = v
+        }
+    }
+
+    private func addMotorChannel() {
+        let used = Set(model.config.motorWidget.channels.map(\.channel))
+        let nextChannel = (1...16).first { !used.contains($0) } ?? 1
+        let nextLabel = "M\(model.config.motorWidget.channels.count + 1)"
+        model.config.motorWidget.channels.append(
+            MotorChannelEntry(channel: nextChannel, label: nextLabel))
+    }
+
+    private func removeMotorChannel(_ i: Int) {
+        guard i < model.config.motorWidget.channels.count,
+              model.config.motorWidget.channels.count > 1 else { return }
+        model.config.motorWidget.channels.remove(at: i)
     }
 
     /// Moving-average window slider, plus an optional Kalman toggle.

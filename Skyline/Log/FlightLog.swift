@@ -86,11 +86,15 @@ final class FlightLog {
     private(set) var kalmanAltitude: Series = []
     private(set) var kalmanAltitudeAbs: Series = []
 
-    /// RCOU motor outputs in µs: the throttle (servo 5) and the four lift
-    /// motors (servos 7–10). A `FadingSeries` so widgets can fade a channel
-    /// out once it goes quiet.
-    private(set) var motorThrottle = FadingSeries.empty
-    private(set) var motorLift: [FadingSeries] = []
+    /// Every RCOU output channel seen in the log (C1…), wrapped in a
+    /// `FadingSeries` so the Motors widget can fade a channel out once it
+    /// goes quiet. The Motors widget configuration picks which channels to
+    /// display by number.
+    private(set) var rcouChannels: [Int: FadingSeries] = [:]
+    /// SERVOn_FUNCTION values pulled from `PARM` messages, keyed by the
+    /// servo channel number (1-based). e.g. `servoFunctions[5] = 70` means
+    /// `SERVO5_FUNCTION = 70` (Throttle).
+    private(set) var servoFunctions: [Int: Int] = [:]
     /// Rangefinder readings, wrapped for the same drop-out fade.
     private(set) var rangefinderFade = FadingSeries.empty
 
@@ -112,14 +116,14 @@ final class FlightLog {
     private func build(from data: Data) throws {
         let wanted: Set<String> = [
             "GPS", "ARSP", "BARO", "ATT", "MODE", "MSG", "RFND", "XKF2", "NKF2",
-            "RCOU", "BAT", "IMU", "ACC", "ARM", "ORGN",
+            "RCOU", "BAT", "IMU", "ACC", "ARM", "ORGN", "PARM",
         ]
         var t0: Double?
 
-        // RCOU servo outputs collected raw, then wrapped after parsing.
-        let liftServos = [7, 8, 9, 10]
-        var throttleRaw: Series = []
-        var liftRaw: [Series] = Array(repeating: [], count: liftServos.count)
+        // RCOU servo outputs collected raw per channel, then wrapped after
+        // parsing. We don't filter — every channel the log carries gets a
+        // series, and the Motors widget picks which to show.
+        var rcouRaw: [Int: Series] = [:]
 
         // Home detection inputs, resolved after the whole log is read.
         var originHome: GeoPoint?     // ORGN Type 0 — the logged home
@@ -198,11 +202,20 @@ final class FlightLog {
                     rangefinder.append((t, d))
                 }
             case "RCOU":
-                if let v = m.fields["C5"]?.double { throttleRaw.append((t, v)) }
-                for (i, ch) in liftServos.enumerated() {
+                for ch in 1...16 {
                     if let v = m.fields["C\(ch)"]?.double {
-                        liftRaw[i].append((t, v))
+                        rcouRaw[ch, default: []].append((t, v))
                     }
+                }
+            case "PARM":
+                // Capture SERVO<n>_FUNCTION values so the Motors widget can
+                // auto-detect which channels carry throttle and the motors.
+                if let name = m.fields["Name"]?.string,
+                   let value = m.fields["Value"]?.double,
+                   name.hasPrefix("SERVO"), name.hasSuffix("_FUNCTION") {
+                    let mid = name.dropFirst("SERVO".count)
+                                  .dropLast("_FUNCTION".count)
+                    if let n = Int(mid) { servoFunctions[n] = Int(value) }
                 }
             case "XKF2", "NKF2":
                 if let vn = m.fields["VWN"]?.double,
@@ -221,8 +234,9 @@ final class FlightLog {
             altitude = altitude.map { ($0.t, $0.v - a0) }
         }
 
-        motorThrottle = FadingSeries(throttleRaw, threshold: Self.motorLiveThreshold)
-        motorLift = liftRaw.map { FadingSeries($0, threshold: Self.motorLiveThreshold) }
+        rcouChannels = rcouRaw.mapValues {
+            FadingSeries($0, threshold: Self.motorLiveThreshold)
+        }
         // Every rangefinder sample is already a valid reading, so any of them
         // counts as "live" — a zero threshold makes the fade purely recency.
         rangefinderFade = FadingSeries(rangefinder, threshold: 0)

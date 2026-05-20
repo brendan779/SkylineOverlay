@@ -13,8 +13,24 @@ struct OverlayLayout {
 
     func size(for kind: WidgetKind) -> CGSize {
         let s = config[kind].scale
-        return CGSize(width: kind.designSize.width * s * outputScale,
-                      height: kind.designSize.height * s * outputScale)
+        let design = designSize(for: kind)
+        return CGSize(width: design.width * s * outputScale,
+                      height: design.height * s * outputScale)
+    }
+
+    /// Per-kind design size. Most widgets use the static `kind.designSize`,
+    /// but the Motors widget grows wider with the number of channels the
+    /// user has configured so each bar keeps a consistent visual size.
+    private func designSize(for kind: WidgetKind) -> CGSize {
+        switch kind {
+        case .motors:
+            let n = max(1, config.motorWidget.channels.count)
+            // Side padding + per-bar lane (≈ bar + gap).
+            let width = max(70.0, 22.0 + 26.0 * Double(n))
+            return CGSize(width: width, height: kind.designSize.height)
+        default:
+            return kind.designSize
+        }
     }
 
     func rect(for kind: WidgetKind) -> CGRect {
@@ -107,8 +123,7 @@ struct OverlayView: View {
                                 verticalSpeed: sample.verticalSpeed, size: size)
         case .motors:
             MotorBarWidget(settings: settings, theme: config.theme,
-                           throttle: sample.throttle,
-                           liftMotors: sample.liftMotors, size: size)
+                           motors: sample.motors, size: size)
         case .rangefinder:
             RangefinderWidget(settings: settings, theme: config.theme,
                               distance: sample.rangefinder,

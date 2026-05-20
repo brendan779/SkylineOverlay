@@ -95,11 +95,13 @@ final class AppModel {
     // ── Log loading ──────────────────────────────────────────────────────
     func loadLog(url: URL) {
         do {
-            flightLog = try FlightLog(url: url)
+            let log = try FlightLog(url: url)
+            flightLog = log
             logURL = url
             loadError = nil
             scrubTime = 0
             refreshMapSnapshot()
+            applyMotorAutoDetect(from: log)
         } catch {
             flightLog = nil
             logURL = nil
@@ -107,6 +109,16 @@ final class AppModel {
             loadError = "Couldn't read \(url.lastPathComponent) — "
                 + "the log may be truncated or from an unsupported firmware."
         }
+    }
+
+    /// On a fresh log, if the user hasn't customised the Motors widget,
+    /// replace the factory-default channels with whatever the log's PARM
+    /// messages say (SERVOn_FUNCTION). User edits are left alone.
+    private func applyMotorAutoDetect(from log: FlightLog) {
+        guard config.motorWidget.matchesFactoryDefault,
+              let detected = MotorWidgetConfig.fromServoFunctions(log.servoFunctions)
+        else { return }
+        config.motorWidget = detected
     }
 
     func presentOpenPanel() {
