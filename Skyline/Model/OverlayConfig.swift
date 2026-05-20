@@ -37,6 +37,38 @@ enum DistanceUnit: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+// ── Headtracker suppression ──────────────────────────────────────────────
+
+/// Hide the overlay while the headtracker is actively moving the gimbal.
+///
+/// When `isEnabled` is on, Skyline watches `channel` on the log's RCIN
+/// stream. While the value sits inside `[centerLow, centerHigh]` the gimbal
+/// is centred and the overlay renders normally. Once the value leaves the
+/// centre band — the pilot is looking around — every widget fades to zero
+/// over `fadeSeconds`. When the switch returns to centre the overlay fades
+/// back in.
+struct HeadtrackerSuppression: Codable, Equatable {
+    var isEnabled: Bool
+    var channel: Int          // 1-based RCIN channel
+    var centerLow: Double     // µs — bottom of the "centred" band
+    var centerHigh: Double    // µs — top of the "centred" band
+    var fadeSeconds: Double   // 0…2
+
+    init(isEnabled: Bool = false,
+         channel: Int = 5,
+         centerLow: Double = 1300,
+         centerHigh: Double = 1700,
+         fadeSeconds: Double = 0.5) {
+        self.isEnabled = isEnabled
+        self.channel = channel
+        self.centerLow = centerLow
+        self.centerHigh = centerHigh
+        self.fadeSeconds = fadeSeconds
+    }
+
+    static let `default` = HeadtrackerSuppression()
+}
+
 // ── Motors widget ────────────────────────────────────────────────────────
 
 /// ArduPilot SERVO function IDs we recognise for the Motors widget. Maps to
@@ -285,6 +317,8 @@ final class OverlayConfig {
     /// Channels the Motors widget displays — auto-detected from the log's
     /// PARM messages on load, or user-edited in the Inspector.
     var motorWidget: MotorWidgetConfig
+    /// Hide every widget while the gimbal headtracker is active.
+    var headtracker: HeadtrackerSuppression
     var widgets: [WidgetKind: WidgetSettings]
     /// Per-widget threshold colour profiles.
     var thresholds: [WidgetKind: ThresholdProfile]
@@ -304,6 +338,7 @@ final class OverlayConfig {
          mapZoom: Double = 1,
          mapTrailSeconds: Double = 0,
          motorWidget: MotorWidgetConfig = .factoryDefault,
+         headtracker: HeadtrackerSuppression = .default,
          widgets: [WidgetKind: WidgetSettings]? = nil,
          thresholds: [WidgetKind: ThresholdProfile] = [:],
          smoothing: [WidgetKind: SmoothingSettings] = [:]) {
@@ -320,6 +355,7 @@ final class OverlayConfig {
         self.mapZoom = mapZoom
         self.mapTrailSeconds = mapTrailSeconds
         self.motorWidget = motorWidget
+        self.headtracker = headtracker
         self.thresholds = thresholds
         self.smoothing = smoothing
         if let widgets {
@@ -368,6 +404,7 @@ extension OverlayConfig {
         var mapZoom: Double?
         var mapTrailSeconds: Double?
         var motorWidget: MotorWidgetConfig?
+        var headtracker: HeadtrackerSuppression?
         var widgets: [WidgetKind: WidgetSettings]
         var thresholds: [WidgetKind: ThresholdProfile]?
         var smoothing: [WidgetKind: SmoothingSettings]?
@@ -387,6 +424,7 @@ extension OverlayConfig {
                  mapZoom: mapZoom,
                  mapTrailSeconds: mapTrailSeconds,
                  motorWidget: motorWidget,
+                 headtracker: headtracker,
                  widgets: widgets,
                  thresholds: thresholds,
                  smoothing: smoothing)
@@ -406,6 +444,7 @@ extension OverlayConfig {
                   mapZoom: snapshot.mapZoom ?? 1,
                   mapTrailSeconds: snapshot.mapTrailSeconds ?? 0,
                   motorWidget: snapshot.motorWidget ?? .factoryDefault,
+                  headtracker: snapshot.headtracker ?? .default,
                   widgets: snapshot.widgets,
                   thresholds: snapshot.thresholds ?? [:],
                   smoothing: snapshot.smoothing ?? [:])

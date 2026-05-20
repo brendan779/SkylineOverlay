@@ -62,7 +62,7 @@ struct OverlayView: View {
                 if settings.isEnabled {
                     let rect = layout.rect(for: kind)
                     widget(kind, settings: settings, size: rect.size)
-                        .opacity(settings.opacity)
+                        .opacity(settings.opacity * sample.overlayOpacityScale)
                         .position(x: rect.midX, y: rect.midY)
                 }
             }

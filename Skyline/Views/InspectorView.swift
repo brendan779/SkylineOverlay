@@ -80,12 +80,55 @@ struct InspectorControls: View {
                         .foregroundStyle(Theme.textMuted)
                     Spacer()
                 }
+
+                headtrackerControls
             }
         }
     }
 
     private var offsetBinding: Binding<Double> {
         Binding { model.timeOffset } set: { model.timeOffset = $0 }
+    }
+
+    /// Toggle + tuning for the headtracker-suppression feature. Sits inside
+    /// the Sync section; collapsed to a single switch when the feature is
+    /// off, expanded with channel + thresholds + fade when on.
+    private var headtrackerControls: some View {
+        @Bindable var config = model.config
+        return VStack(alignment: .leading, spacing: 6) {
+            Divider().overlay(Theme.border).padding(.vertical, 2)
+            Toggle(isOn: $config.headtracker.isEnabled) {
+                Text("Hide overlay when headtracker is active")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+
+            if config.headtracker.isEnabled {
+                HStack {
+                    Text("RC channel")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textSecondary)
+                    Spacer()
+                    Text("C\(config.headtracker.channel)")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(Theme.textMuted)
+                    Stepper("", value: $config.headtracker.channel, in: 1...16)
+                        .labelsHidden()
+                        .controlSize(.mini)
+                }
+                sliderRow("Centre low", $config.headtracker.centerLow,
+                          range: 1000...2000) { "\(Int($0.rounded())) µs" }
+                sliderRow("Centre high", $config.headtracker.centerHigh,
+                          range: 1000...2000) { "\(Int($0.rounded())) µs" }
+                sliderRow("Fade", $config.headtracker.fadeSeconds,
+                          range: 0...2, format: "%.1f s")
+                Text("Hides every widget while channel sits outside the centre band.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.textMuted)
+            }
+        }
     }
 
     // ── Widget list ──────────────────────────────────────────────────────

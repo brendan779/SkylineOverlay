@@ -91,6 +91,10 @@ final class FlightLog {
     /// goes quiet. The Motors widget configuration picks which channels to
     /// display by number.
     private(set) var rcouChannels: [Int: FadingSeries] = [:]
+    /// Every RCIN channel — the raw inputs from the receiver. Used by the
+    /// headtracker-suppression feature, which watches the switch position
+    /// on a configured channel to fade the overlay on/off.
+    private(set) var rcInChannels: [Int: Series] = [:]
     /// SERVOn_FUNCTION values pulled from `PARM` messages, keyed by the
     /// servo channel number (1-based). e.g. `servoFunctions[5] = 70` means
     /// `SERVO5_FUNCTION = 70` (Throttle).
@@ -116,7 +120,7 @@ final class FlightLog {
     private func build(from data: Data) throws {
         let wanted: Set<String> = [
             "GPS", "ARSP", "BARO", "ATT", "MODE", "MSG", "RFND", "XKF2", "NKF2",
-            "RCOU", "BAT", "IMU", "ACC", "ARM", "ORGN", "PARM",
+            "RCOU", "RCIN", "BAT", "IMU", "ACC", "ARM", "ORGN", "PARM",
         ]
         var t0: Double?
 
@@ -205,6 +209,12 @@ final class FlightLog {
                 for ch in 1...16 {
                     if let v = m.fields["C\(ch)"]?.double {
                         rcouRaw[ch, default: []].append((t, v))
+                    }
+                }
+            case "RCIN":
+                for ch in 1...16 {
+                    if let v = m.fields["C\(ch)"]?.double {
+                        rcInChannels[ch, default: []].append((t, v))
                     }
                 }
             case "PARM":
@@ -355,6 +365,66 @@ final class FlightLog {
         return GeoPoint(
             latitude: a.point.latitude + f * (b.point.latitude - a.point.latitude),
             longitude: a.point.longitude + f * (b.point.longitude - a.point.longitude))
+    }
+
+    // ── Headtracker suppression ──────────────────────────────────────────
+
+    /// Cached state for `headtrackerOpacity`. Rebuilt only when the channel
+    /// or thresholds change. `lastFlip[i]` is the time of the most recent
+    /// active/inactive state change at or before sample `i`.
+    private var headtrackerCache: (channel: Int,
+                                   low: Double,
+                                   high: Double,
+                                   lastFlip: [Double])?
+
+    /// Overlay opacity scale (0…1) at telemetry time `t` for the
+    /// configured headtracker switch channel.
+    ///
+    /// "Active" = channel value sits outside `[centerLow, centerHigh]` (the
+    /// pilot is looking around). The value fades from 1 → 0 over
+    /// `fadeSeconds` after becoming active, and 0 → 1 after becoming
+    /// inactive. Returns 1.0 — i.e. no suppression — when the channel
+    /// isn't present in the log.
+    func headtrackerOpacity(channel: Int,
+                            centerLow: Double, centerHigh: Double,
+                            fadeSeconds: Double, at t: Double) -> Double {
+        guard let series = rcInChannels[channel], !series.isEmpty else {
+            return 1
+        }
+
+        // Build or reuse the cached flip-time table.
+        if headtrackerCache?.channel != channel
+           || headtrackerCache?.low != centerLow
+           || headtrackerCache?.high != centerHigh {
+            var lastFlip: [Double] = []
+            lastFlip.reserveCapacity(series.count)
+            var prevActive: Bool? = nil
+            var flipTime: Double = series.first!.t
+            for s in series {
+                let active = s.v < centerLow || s.v > centerHigh
+                if let prev = prevActive, prev != active {
+                    flipTime = s.t
+                }
+                prevActive = active
+                lastFlip.append(flipTime)
+            }
+            headtrackerCache = (channel, centerLow, centerHigh, lastFlip)
+        }
+
+        // Find the latest sample at or before t.
+        var lo = 0, hi = series.count - 1
+        while lo < hi {
+            let mid = (lo + hi + 1) / 2
+            if series[mid].t <= t { lo = mid } else { hi = mid - 1 }
+        }
+        let value = series[lo].v
+        let active = value < centerLow || value > centerHigh
+        let flipT = headtrackerCache!.lastFlip[lo]
+        let secondsSinceFlip = max(0, t - flipT)
+        let progress = fadeSeconds > 0
+            ? min(1, secondsSinceFlip / fadeSeconds)
+            : 1
+        return active ? (1 - progress) : progress
     }
 
     /// Moving average of `series` over a `window`-second span centred on `t`.

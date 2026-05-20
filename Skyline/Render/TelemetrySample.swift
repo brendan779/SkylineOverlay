@@ -44,6 +44,12 @@ struct TelemetrySample {
     var gForce: GForce
     var hasIMU: Bool
 
+    // ── Headtracker suppression ──────────────────────────────────────────
+    /// 0…1 scalar the renderer multiplies into every widget's opacity. 1
+    /// when the feature is off (or the configured channel is missing); fades
+    /// to 0 while the headtracker is actively moving the gimbal.
+    var overlayOpacityScale: Double
+
     struct Message {
         var text: String
         var severity: Int
@@ -124,6 +130,16 @@ struct TelemetrySample {
         let messages = log.messagesAt(t, window: config.messageDisplaySeconds)
             .map { Message(text: $0.text, severity: $0.severity, age: t - $0.t) }
 
+        // Headtracker suppression — fades the whole overlay out while the
+        // configured RCIN switch sits outside its centre band.
+        let h = config.headtracker
+        let overlayScale = h.isEnabled
+            ? log.headtrackerOpacity(channel: h.channel,
+                                     centerLow: h.centerLow,
+                                     centerHigh: h.centerHigh,
+                                     fadeSeconds: h.fadeSeconds, at: t)
+            : 1.0
+
         let g = FlightLog.standardGravity
         let gForce = GForce(
             lateralX: log.sample(log.accelX, at: t) / g,
@@ -164,7 +180,8 @@ struct TelemetrySample {
             batteryConsumed: log.sample(log.batteryConsumed, at: t),
             hasBattery: !log.batteryVoltage.isEmpty,
             gForce: gForce,
-            hasIMU: !log.accelZ.isEmpty)
+            hasIMU: !log.accelZ.isEmpty,
+            overlayOpacityScale: overlayScale)
     }
 
     /// Full opacity while a channel is live; once it has been quiet for
@@ -193,5 +210,6 @@ struct TelemetrySample {
         batteryVoltage: 0, batteryCurrent: 0, batteryConsumed: 0,
         hasBattery: false,
         gForce: GForce(lateralX: 0, lateralY: 0, vertical: 1, peakLateral: 0),
-        hasIMU: false)
+        hasIMU: false,
+        overlayOpacityScale: 1)
 }
