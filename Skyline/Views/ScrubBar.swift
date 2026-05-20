@@ -115,6 +115,10 @@ struct ScrubBar: View {
         // Anchor the tab so the chevron sits outside the yellow box edge.
         let anchorX = isLeft ? x - tabW / 2 + 1 : x + tabW / 2 - 1
 
+        // IMPORTANT: contentShape + gesture must come *before* `.position`.
+        // `.position` wraps the view in a parent-sized container, so
+        // modifiers applied after it bind to the whole parent — which
+        // would make one handle hijack every click in the trim area.
         return ZStack {
             RoundedRectangle(cornerRadius: 3)
                 .fill(Theme.trafficYellow)
@@ -124,7 +128,6 @@ struct ScrubBar: View {
                 .foregroundStyle(.black)
         }
         .frame(width: tabW, height: height + 2)
-        .position(x: anchorX, y: trackHeight / 2)
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 0,
@@ -141,6 +144,7 @@ struct ScrubBar: View {
                         model.rangeEnd = min(duration, max(t, lower))
                     }
                 })
+        .position(x: anchorX, y: trackHeight / 2)
     }
 
     static func timecode(_ seconds: Double) -> String {
