@@ -20,6 +20,9 @@ enum Theme {
 
     // Accent — default DJI Mavic green
     static let accent = Color(hex: 0x41D77D)
+    /// Darker green used to differentiate secondary actions (e.g. the
+    /// "Render Selected Range" button) from the main accent.
+    static let accentSecondary = Color(hex: 0x2A8A55)
 
     // Error
     static let error = Color(hex: 0xFF5A5A)

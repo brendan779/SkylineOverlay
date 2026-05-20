@@ -32,16 +32,17 @@ struct RenderBar: View {
             .controlSize(.large)
             .disabled(!model.hasLog)
 
-            if model.hasRange {
+            if model.trimMode, model.hasRange {
                 Button {
                     model.startExport(scope: .range)
                 } label: {
                     Text("Render Selected Range (\(rangeSpan ?? ""))")
-                        .font(.system(size: 11))
+                        .font(.system(size: 12, weight: .semibold))
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.accentSecondary)
+                .controlSize(.regular)
                 .disabled(!model.hasLog)
             }
         }

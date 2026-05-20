@@ -238,34 +238,37 @@ final class AppModel {
     }
 
     // ── Render selection ─────────────────────────────────────────────────
+    /// Whether the timeline is in trim mode — when on, the scrub bar shows
+    /// a draggable yellow trim frame around the selected range.
+    var trimMode: Bool = false
+
     /// In and out points (in scrub-timeline seconds) for rendering only a
     /// slice of the overlay. Both must be set with `end > start` for the
     /// "Render Selected Range" option to be available.
     var rangeStart: Double?
     var rangeEnd: Double?
 
-    /// Whether a valid render range is set.
+    /// A valid render range is set.
     var hasRange: Bool {
         guard let s = rangeStart, let e = rangeEnd else { return false }
         return e > s
     }
 
-    /// Mark the current playhead as the in-point. A stale out-point that
-    /// would sit at or before the new in-point is cleared.
-    func setRangeStart() {
-        guard timelineDuration > 0 else { return }
-        let t = min(max(scrubTime, 0), timelineDuration)
-        rangeStart = t
-        if let e = rangeEnd, e <= t { rangeEnd = nil }
-    }
-
-    /// Mark the current playhead as the out-point, clearing any in-point
-    /// that would now sit at or after it.
-    func setRangeEnd() {
-        guard timelineDuration > 0 else { return }
-        let t = min(max(scrubTime, 0), timelineDuration)
-        rangeEnd = t
-        if let s = rangeStart, s >= t { rangeStart = nil }
+    /// Flip trim mode on/off. Turning it on initialises the range to the
+    /// full timeline so the yellow frame is immediately visible — the user
+    /// then drags the chevron handles inward to narrow it. Turning it off
+    /// preserves the range so re-entering trim mode restores the selection.
+    func toggleTrimMode() {
+        if trimMode {
+            trimMode = false
+        } else {
+            if rangeStart == nil || rangeEnd == nil ||
+               rangeStart == rangeEnd {
+                rangeStart = 0
+                rangeEnd = max(0.001, timelineDuration)
+            }
+            trimMode = true
+        }
     }
 
     func clearRange() {
