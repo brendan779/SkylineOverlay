@@ -53,6 +53,7 @@ struct InspectorControls: View {
                 widgetEditor(kind)
             }
             syncSection
+            gimbalHeadtrackerSection
             outputSection
         }
     }
@@ -80,9 +81,14 @@ struct InspectorControls: View {
                         .foregroundStyle(Theme.textMuted)
                     Spacer()
                 }
-
-                headtrackerControls
             }
+        }
+    }
+
+    // ── Gimbal headtracker ───────────────────────────────────────────────
+    private var gimbalHeadtrackerSection: some View {
+        section("Gimbal Headtracker") {
+            headtrackerControls
         }
     }
 
@@ -90,13 +96,12 @@ struct InspectorControls: View {
         Binding { model.timeOffset } set: { model.timeOffset = $0 }
     }
 
-    /// Toggle + tuning for the headtracker-suppression feature. Sits inside
-    /// the Sync section; collapsed to a single switch when the feature is
-    /// off, expanded with channel + thresholds + fade when on.
+    /// Toggle + tuning for the headtracker-suppression feature. Collapsed
+    /// to a single switch when the feature is off, expanded with channel +
+    /// thresholds + fade when on.
     private var headtrackerControls: some View {
         @Bindable var config = model.config
         return VStack(alignment: .leading, spacing: 6) {
-            Divider().overlay(Theme.border).padding(.vertical, 2)
             Toggle(isOn: $config.headtracker.isEnabled) {
                 Text("Hide overlay when headtracker is active")
                     .font(.system(size: 11))
