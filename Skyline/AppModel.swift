@@ -237,6 +237,42 @@ final class AppModel {
         }
     }
 
+    // ── Render selection ─────────────────────────────────────────────────
+    /// In and out points (in scrub-timeline seconds) for rendering only a
+    /// slice of the overlay. Both must be set with `end > start` for the
+    /// "Render Selected Range" option to be available.
+    var rangeStart: Double?
+    var rangeEnd: Double?
+
+    /// Whether a valid render range is set.
+    var hasRange: Bool {
+        guard let s = rangeStart, let e = rangeEnd else { return false }
+        return e > s
+    }
+
+    /// Mark the current playhead as the in-point. A stale out-point that
+    /// would sit at or before the new in-point is cleared.
+    func setRangeStart() {
+        guard timelineDuration > 0 else { return }
+        let t = min(max(scrubTime, 0), timelineDuration)
+        rangeStart = t
+        if let e = rangeEnd, e <= t { rangeEnd = nil }
+    }
+
+    /// Mark the current playhead as the out-point, clearing any in-point
+    /// that would now sit at or after it.
+    func setRangeEnd() {
+        guard timelineDuration > 0 else { return }
+        let t = min(max(scrubTime, 0), timelineDuration)
+        rangeEnd = t
+        if let s = rangeStart, s >= t { rangeStart = nil }
+    }
+
+    func clearRange() {
+        rangeStart = nil
+        rangeEnd = nil
+    }
+
     // ── Export ───────────────────────────────────────────────────────────
     enum RenderPhase: Equatable {
         case idle
@@ -244,6 +280,9 @@ final class AppModel {
         case done(URL)
         case failed(String)
     }
+
+    /// Which portion of the timeline an export covers.
+    enum ExportScope { case full, range }
 
     var renderPhase: RenderPhase = .idle
     private var exporter: VideoExporter?
@@ -254,27 +293,43 @@ final class AppModel {
     }
 
     /// Ask for an output location, then render the overlay to a video file.
-    func startExport() {
+    ///
+    /// `scope` selects whether the export covers the whole timeline or just
+    /// the in/out range the user marked. With `.range` the output starts at
+    /// `rangeStart` and lasts `rangeEnd - rangeStart` seconds.
+    func startExport(scope: ExportScope = .full) {
         guard let log = flightLog else { return }
+
+        let exportStart: Double
+        let exportDuration: Double?
+        let nameSuffix: String
+        switch scope {
+        case .range:
+            guard let s = rangeStart, let e = rangeEnd, e > s else { return }
+            exportStart = s
+            exportDuration = e - s
+            nameSuffix = String(format: "_range_%.0f-%.0fs", s, e)
+        case .full:
+            exportStart = 0
+            exportDuration = hasVideo && videoDuration > 0 ? videoDuration : nil
+            nameSuffix = "_overlay"
+        }
+
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.quickTimeMovie]
         let base = logURL?.deletingPathExtension().lastPathComponent ?? "overlay"
-        panel.nameFieldStringValue = "\(base)_overlay.mov"
+        panel.nameFieldStringValue = "\(base)\(nameSuffix).mov"
         panel.message = "Choose where to save the overlay video"
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
-        // Match the video's length and sync offset so the exported overlay
-        // lines up with the footage in an editor.
-        let exportDuration: Double? = hasVideo && videoDuration > 0
-            ? videoDuration : nil
         let offset = timeOffset
-
         let exporter = VideoExporter()
         self.exporter = exporter
         renderPhase = .rendering(0)
         Task { @MainActor in
             do {
                 try await exporter.export(log: log, config: config, to: url,
+                                          startTime: exportStart,
                                           duration: exportDuration,
                                           timeOffset: offset,
                                           mapSnapshot: mapSnapshot) { p in

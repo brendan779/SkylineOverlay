@@ -38,10 +38,13 @@ final class VideoExporter {
 
     /// Export the overlay for `log` to `url`.
     ///
-    /// `duration` sets the export length (the video's length when one is
-    /// loaded); nil uses the log's length. `timeOffset` shifts the telemetry
-    /// so the exported overlay lines up with the footage.
+    /// `startTime` shifts the export window forward on the scrub timeline
+    /// (used to render a marked in/out range). `duration` sets the export
+    /// length (the video's length when one is loaded); nil uses the log's
+    /// length. `timeOffset` shifts the telemetry so the exported overlay
+    /// lines up with the footage.
     func export(log: FlightLog, config: OverlayConfig, to url: URL,
+                startTime: Double = 0,
                 duration: Double? = nil,
                 timeOffset: Double = 0,
                 mapSnapshot: FlightMapImage? = nil,
@@ -96,8 +99,9 @@ final class VideoExporter {
             while !input.isReadyForMoreMediaData {
                 try await Task.sleep(nanoseconds: 8_000_000)
             }
-            let telemetryTime = min(max(Double(frame) / fps + timeOffset, 0),
-                                    log.duration())
+            let telemetryTime = min(
+                max(Double(frame) / fps + startTime + timeOffset, 0),
+                log.duration())
             let sample = TelemetrySample.make(from: log, at: telemetryTime,
                                               config: config)
             let buffer = try renderFrame(config: config, sample: sample,
