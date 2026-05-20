@@ -2,9 +2,9 @@ import SwiftUI
 
 /// Timeline scrubber and transport under the preview frame.
 ///
-/// Above the basic play/pause + slider, the bar also marks an optional
-/// in/out range — like a video-editor trim — so the user can render just
-/// that slice from the Inspector's Render button.
+/// Two bracket buttons (`[` / `]`, plus `I` / `O` keyboard shortcuts) mark
+/// an optional in/out range — like a video-editor trim — so the user can
+/// render just that slice from the Inspector's Render bar.
 struct ScrubBar: View {
     @Environment(AppModel.self) private var model
 
@@ -24,15 +24,21 @@ struct ScrubBar: View {
             Text(Self.timecode(model.scrubTime))
                 .frame(width: 64, alignment: .leading)
 
-            rangeButton("[", help: "Set range in-point at playhead (I)",
-                        shortcut: "i") { model.setRangeStart() }
+            bracketButton("[", help: "Set in-point at playhead (I)",
+                          shortcut: "i") { model.setRangeStart() }
 
-            timelineTrack
+            Slider(
+                value: Binding { model.scrubTime } set: { model.seek(to: $0) },
+                in: 0...max(model.timelineDuration, 0.001),
+                onEditingChanged: { model.isScrubbing = $0 })
+                .controlSize(.small)
+                .disabled(model.timelineDuration <= 0)
+                .background(rangeOverlay)
 
-            rangeButton("]", help: "Set range out-point at playhead (O)",
-                        shortcut: "o") { model.setRangeEnd() }
+            bracketButton("]", help: "Set out-point at playhead (O)",
+                          shortcut: "o") { model.setRangeEnd() }
 
-            if model.hasRange {
+            if model.hasRange || model.rangeStart != nil || model.rangeEnd != nil {
                 Button { model.clearRange() } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 11))
@@ -51,57 +57,60 @@ struct ScrubBar: View {
         .padding(.vertical, 8)
     }
 
-    /// The scrub slider with an accent band drawn behind it showing the
-    /// marked in/out range.
-    private var timelineTrack: some View {
-        ZStack {
-            GeometryReader { geo in
-                if model.hasRange, let band = rangeBand(in: geo.size.width) {
-                    Rectangle()
-                        .fill(Theme.accent.opacity(0.28))
-                        .frame(width: band.width, height: 6)
-                        .offset(x: band.x,
-                                y: (geo.size.height - 6) / 2)
-                }
+    /// Tinted band + tick marks drawn on the slider's track.
+    ///
+    /// Sits in the slider's `.background`, so the `GeometryReader` is sized
+    /// to the slider — it never inflates the row. The slider's thumb inset
+    /// is opaque, so the alignment is approximate (close enough to read).
+    private var rangeOverlay: some View {
+        GeometryReader { geo in
+            let inset: CGFloat = 8
+            let usable = max(0, geo.size.width - inset * 2)
+            let yMid = geo.size.height / 2
+
+            // Band between in and out, when both are set.
+            if model.hasRange,
+               let s = model.rangeStart, let e = model.rangeEnd,
+               model.timelineDuration > 0 {
+                let x0 = inset + CGFloat(s / model.timelineDuration) * usable
+                let x1 = inset + CGFloat(e / model.timelineDuration) * usable
+                Rectangle()
+                    .fill(Theme.accent.opacity(0.28))
+                    .frame(width: max(2, x1 - x0), height: 4)
+                    .position(x: (x0 + x1) / 2, y: yMid)
             }
-            .allowsHitTesting(false)
-
-            Slider(
-                value: Binding { model.scrubTime } set: { model.seek(to: $0) },
-                in: 0...max(model.timelineDuration, 0.001),
-                onEditingChanged: { model.isScrubbing = $0 })
-                .controlSize(.small)
-                .disabled(model.timelineDuration <= 0)
+            // Tick at the in-point — visible even before an out-point is set.
+            if let s = model.rangeStart, model.timelineDuration > 0 {
+                let x = inset + CGFloat(s / model.timelineDuration) * usable
+                Rectangle()
+                    .fill(Theme.accent)
+                    .frame(width: 2, height: 12)
+                    .position(x: x, y: yMid)
+            }
+            // Tick at the out-point.
+            if let e = model.rangeEnd, model.timelineDuration > 0 {
+                let x = inset + CGFloat(e / model.timelineDuration) * usable
+                Rectangle()
+                    .fill(Theme.accent)
+                    .frame(width: 2, height: 12)
+                    .position(x: x, y: yMid)
+            }
         }
+        .allowsHitTesting(false)
     }
 
-    /// Position and width of the selection band, in the slider's local
-    /// coordinate space. The slider's thumb inset is opaque, so this is an
-    /// approximation — close enough to read at a glance.
-    private func rangeBand(in width: CGFloat) -> (x: CGFloat, width: CGFloat)? {
-        guard let s = model.rangeStart, let e = model.rangeEnd,
-              model.timelineDuration > 0 else { return nil }
-        let inset: CGFloat = 8
-        let usable = max(0, width - inset * 2)
-        let lo = CGFloat(s / model.timelineDuration)
-        let hi = CGFloat(e / model.timelineDuration)
-        return (x: inset + lo * usable,
-                width: max(2, (hi - lo) * usable))
-    }
-
-    /// A compact bracket button — sets an in or out point and registers a
-    /// keyboard shortcut so the user can hit `I` / `O` like a video editor.
-    private func rangeButton(_ label: String, help: String,
-                             shortcut: KeyEquivalent,
-                             action: @escaping () -> Void) -> some View {
+    /// Small bordered bracket button — sets an in or out point and binds the
+    /// matching single-key shortcut (`I` / `O`, like a video editor).
+    private func bracketButton(_ label: String, help: String,
+                               shortcut: KeyEquivalent,
+                               action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)
-                .font(.system(size: 13, weight: .semibold,
+                .font(.system(size: 11, weight: .semibold,
                               design: .monospaced))
-                .frame(width: 14)
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(Theme.textSecondary)
+        .buttonStyle(.bordered)
+        .controlSize(.mini)
         .help(help)
         .keyboardShortcut(shortcut, modifiers: [])
         .disabled(model.timelineDuration <= 0)

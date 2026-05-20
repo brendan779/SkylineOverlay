@@ -19,42 +19,32 @@ struct RenderBar: View {
     }
 
     private var idleState: some View {
-        VStack(spacing: 4) {
-            Menu {
-                Button {
-                    model.startExport(scope: .range)
-                } label: {
-                    Label(rangeMenuTitle, systemImage: "scissors")
-                }
-                .disabled(!model.hasRange)
+        VStack(spacing: 8) {
+            Button {
+                model.startExport(scope: .full)
             } label: {
                 Text("Render Overlay")
                     .font(.system(size: 13, weight: .semibold))
                     .frame(maxWidth: .infinity)
-            } primaryAction: {
-                model.startExport(scope: .full)
             }
-            .menuStyle(.borderlessButton)
             .buttonStyle(.borderedProminent)
             .tint(Theme.accent)
             .controlSize(.large)
             .disabled(!model.hasLog)
 
-            if let span = rangeSpan {
-                Text("Range: \(span)")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(Theme.textMuted)
+            if model.hasRange {
+                Button {
+                    model.startExport(scope: .range)
+                } label: {
+                    Text("Render Selected Range (\(rangeSpan ?? ""))")
+                        .font(.system(size: 11))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(!model.hasLog)
             }
         }
-    }
-
-    /// Label for the dropdown item — includes the range length when set so
-    /// the user can see at a glance what "Render Selected Range" will do.
-    private var rangeMenuTitle: String {
-        if let span = rangeSpan {
-            return "Render Selected Range (\(span))"
-        }
-        return "Render Selected Range"
     }
 
     /// Formatted duration of the marked in/out range, or nil when none.
