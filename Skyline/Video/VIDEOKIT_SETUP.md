@@ -6,21 +6,22 @@ Xcode step rather than something Skyline can do automatically. Until
 VLCKit is added, the "Connect Video Stream" UI shows a placeholder and
 `canImport(VLCKit)` is false everywhere.
 
-## Add the dependency (one minute, one time)
+## Add the dependency (~30 seconds, one time)
+
+VideoLAN's own `code.videolan.org/videolan/VLCKit.git` is **not** SPM-
+compatible — it has no `Package.swift`. Use one of the community wrappers
+instead:
 
 1. Open `Skyline.xcodeproj` in Xcode.
 2. **File → Add Package Dependencies…**
-3. Paste a VLCKit package URL:
-   - VideoLAN official (preferred):
-     `https://code.videolan.org/videolan/VLCKit.git`
-   - or a maintained SPM mirror, e.g. one of:
-     - `https://github.com/Tim-Beals/VLCKit`
-     - `https://github.com/mhmiles/VLCKit-SPM`
-   The official package may not be SPM-compatible on every version — if
-   the resolve step fails, switch to one of the mirrors.
-4. Pick the **VLCKit** (or **MobileVLCKit** on iOS) product and add it to
-   the **Skyline** target.
-5. Build. The placeholder disappears and live RTSP playback starts
+3. Paste: `https://github.com/tylerjonesio/vlckit-spm`
+   - Stable VLCKit 3.5.x distribution. Recommended.
+   - Newer alternative (VLCKit 4 alpha + PiP):
+     `https://github.com/virtualox/vlckit-spm`
+4. Click **Add Package** with "Up to Next Major" version rule.
+5. In the products sheet, tick **VLCKit** for the **Skyline** target,
+   then **Add Package**.
+6. Build. The placeholder disappears and live RTSP playback starts
    working — no Skyline-side code changes needed.
 
 ## How to test against Cosmostreamer
