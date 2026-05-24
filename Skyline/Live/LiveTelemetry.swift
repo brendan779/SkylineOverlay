@@ -36,7 +36,42 @@ enum TelemetryLinkProfile: String, CaseIterable, Codable, Identifiable {
     /// Whether Skyline should send `REQUEST_DATA_STREAM` to throttle. False
     /// for `.custom` — the FC's own settings apply.
     var managesRates: Bool { self != .custom }
+
+    /// Rate Skyline asks for on slower-changing streams (battery, GPS, wind,
+    /// raw IMU). Slowed to roughly a quarter of the fast rate so we don't
+    /// burn LoRa bandwidth on values that don't move fast.
+    var slowRateHz: UInt16 { max(1, rateHz / 4) }
 }
+
+/// One ArduPilot MAVLink stream and what Skyline does with it. Anything
+/// Skyline doesn't read is set to `.disabled` so the FC doesn't waste
+/// bandwidth pushing it down the link.
+private enum StreamPriority {
+    case fast        // smooth-update streams (ATTITUDE, VFR_HUD, RC_CHANNELS)
+    case slow        // slow-changing values (battery, GPS, wind, raw IMU)
+    case disabled    // we don't read it at all
+
+    func rateHz(for profile: TelemetryLinkProfile) -> UInt16 {
+        switch self {
+        case .fast:     return profile.rateHz
+        case .slow:     return profile.slowRateHz
+        case .disabled: return 0
+        }
+    }
+}
+
+/// Which `MAV_DATA_STREAM_*` ID gets which priority. ID 0 (ALL) is left out
+/// — we send each stream individually so the unused ones can be turned off.
+private let skylineStreamPriorities: [(streamId: UInt8, priority: StreamPriority)] = [
+    (1,  .slow),      // RAW_SENSORS — just SCALED_IMU for the g-force widget
+    (2,  .slow),      // EXTENDED_STATUS — battery, GPS_RAW_INT, sys status
+    (3,  .fast),      // RC_CHANNELS — headtracker switch + motors widget
+    (4,  .disabled),  // RAW_CONTROLLER — Skyline doesn't read this
+    (6,  .slow),      // POSITION — GLOBAL_POSITION_INT (covered by VFR_HUD too)
+    (10, .fast),      // EXTRA1 — ATTITUDE (smooth horizon)
+    (11, .fast),      // EXTRA2 — VFR_HUD (speeds, alt, climb)
+    (12, .slow),      // EXTRA3 — WIND, RANGEFINDER, etc.
+]
 
 /// Live MAVLink telemetry coming over a USB-serial radio.
 ///
@@ -191,10 +226,11 @@ final class LiveTelemetry {
         status = .disconnected
     }
 
-    /// Send a single `REQUEST_DATA_STREAM` that caps every stream on the
-    /// FC at the link profile's rate. The FC's `SR_*` parameters set
-    /// defaults at boot; this request overrides them at runtime for the
-    /// link we're connected on, which is what we want.
+    /// Send a `REQUEST_DATA_STREAM` per ArduPilot stream — fast rate for the
+    /// streams Skyline draws live (attitude, RC, VFR_HUD), slow rate for
+    /// slow-changing data (battery, GPS, wind), and 0 / stop for streams
+    /// Skyline doesn't consume at all. The FC's `SR_*` parameters set
+    /// defaults at boot; this overrides them at runtime for our link.
     ///
     /// No-op when the user has chosen the `.custom` profile — in that
     /// case Skyline keeps its hands off and the FC's own `SR_*` rates
@@ -203,19 +239,23 @@ final class LiveTelemetry {
     private func requestThrottledStreams() {
         guard linkProfile.managesRates else { return }
         guard let serial, let target = fcSysId else { return }
-        let payload = Mavlink.requestDataStreamPayload(
-            targetSystem: target,
-            targetComponent: 1,            // MAV_COMP_ID_AUTOPILOT1
-            streamId: 0,                   // MAV_DATA_STREAM_ALL
-            rateHz: linkProfile.rateHz,
-            start: true)
-        outboundSeq = outboundSeq &+ 1
-        let frame = Mavlink.encodeV1(seq: outboundSeq,
-                                     sysId: gcsSysId,
-                                     compId: gcsCompId,
-                                     msgId: 66,    // REQUEST_DATA_STREAM
-                                     payload: payload)
-        serial.write(frame)
+
+        for (streamId, priority) in skylineStreamPriorities {
+            let rate = priority.rateHz(for: linkProfile)
+            let payload = Mavlink.requestDataStreamPayload(
+                targetSystem: target,
+                targetComponent: 1,        // MAV_COMP_ID_AUTOPILOT1
+                streamId: streamId,
+                rateHz: rate,
+                start: rate > 0)
+            outboundSeq = outboundSeq &+ 1
+            let frame = Mavlink.encodeV1(seq: outboundSeq,
+                                         sysId: gcsSysId,
+                                         compId: gcsCompId,
+                                         msgId: 66,    // REQUEST_DATA_STREAM
+                                         payload: payload)
+            serial.write(frame)
+        }
         lastStreamRequest = Date()
     }
 
