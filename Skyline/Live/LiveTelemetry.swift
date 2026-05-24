@@ -3,30 +3,39 @@ import Observation
 import CoreLocation
 
 /// Picks a sensible MAVLink stream rate for the kind of telemetry link in
-/// use. Low-bandwidth radios (LoRa, ELRS MAVLink backpacks) need a tight
-/// cap or they back up; SiK / RFD900-class radios handle much more.
+/// use, or opts Skyline out of managing rates entirely.
+///
+/// - `lora` — low-bandwidth radios (Microair LoRa, ELRS MAVLink backpacks).
+/// - `sik`  — comfortable-bandwidth radios (SiK, RFD900).
+/// - `custom` — Skyline does not send `REQUEST_DATA_STREAM`; whatever the
+///   FC's `SR_*` parameters give is what you get.
 enum TelemetryLinkProfile: String, CaseIterable, Codable, Identifiable {
-    case lora          // Microair LoRa, ELRS MAVLink, etc.
-    case sik           // SiK, RFD900, anything with comfortable bandwidth
+    case lora
+    case sik
+    case custom
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
-        case .lora: return "LoRa / ELRS  (low rate)"
-        case .sik:  return "SiK / RFD900 (high rate)"
+        case .lora:   return "LoRa / ELRS  (low rate, 2 Hz)"
+        case .sik:    return "SiK / RFD900 (high rate, 10 Hz)"
+        case .custom: return "Custom  (use FC's SR_ rates)"
         }
     }
 
     /// Per-stream rate sent in `REQUEST_DATA_STREAM(stream_id=ALL, rate=…)`.
-    /// LoRa gets 2 Hz to stay well inside the airlink's budget; SiK-class
-    /// links can comfortably carry the full ArduPilot HUD set at 10 Hz.
     var rateHz: UInt16 {
         switch self {
-        case .lora: return 2
-        case .sik:  return 10
+        case .lora:   return 2
+        case .sik:    return 10
+        case .custom: return 0       // unused — see `managesRates`
         }
     }
+
+    /// Whether Skyline should send `REQUEST_DATA_STREAM` to throttle. False
+    /// for `.custom` — the FC's own settings apply.
+    var managesRates: Bool { self != .custom }
 }
 
 /// Live MAVLink telemetry coming over a USB-serial radio.
@@ -186,7 +195,13 @@ final class LiveTelemetry {
     /// FC at the link profile's rate. The FC's `SR_*` parameters set
     /// defaults at boot; this request overrides them at runtime for the
     /// link we're connected on, which is what we want.
+    ///
+    /// No-op when the user has chosen the `.custom` profile — in that
+    /// case Skyline keeps its hands off and the FC's own `SR_*` rates
+    /// apply. (If a prior session set a throttle, that lingers on the
+    /// FC until reboot.)
     private func requestThrottledStreams() {
+        guard linkProfile.managesRates else { return }
         guard let serial, let target = fcSysId else { return }
         let payload = Mavlink.requestDataStreamPayload(
             targetSystem: target,

@@ -74,10 +74,10 @@ struct ConnectTelemetrySheet: View {
                 .labelsHidden()
                 .controlSize(.small)
                 .pickerStyle(.menu)
-                Text("Caps the FC's MAVLink stream rate so a slow airlink "
-                     + "doesn't back up.")
+                Text(linkProfileHelp)
                     .font(.system(size: 10))
                     .foregroundStyle(Theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             // Status line — pulls live state from the model.
@@ -103,6 +103,19 @@ struct ConnectTelemetrySheet: View {
         .frame(width: 360)
         .background(Theme.surface)
         .onAppear { restoreLastUsed() }
+    }
+
+    /// Help-text under the link-profile picker that swaps based on choice
+    /// so the user understands what Skyline is doing in each mode.
+    private var linkProfileHelp: String {
+        switch selectedProfile {
+        case .lora, .sik:
+            return "Skyline asks the FC to cap streams at the profile's rate "
+                + "via REQUEST_DATA_STREAM."
+        case .custom:
+            return "Skyline won't change FC stream rates — configure the SR_ "
+                + "parameters yourself in Mission Planner."
+        }
     }
 
     @ViewBuilder
