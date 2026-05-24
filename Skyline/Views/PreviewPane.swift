@@ -2,16 +2,17 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// Centre pane — the 16:9 preview frame (video backdrop + overlay) and the
-/// scrub bar, or an empty drop-zone state when no log is loaded.
+/// scrub bar, or an empty drop-zone state when there's no data source.
 struct PreviewPane: View {
     @Environment(AppModel.self) private var model
+    @State private var showTelemetrySheet = false
 
     var body: some View {
         VStack(spacing: 0) {
             GeometryReader { geo in
                 let frame = Self.fit(aspect: 16.0 / 9.0, in: geo.size)
                 ZStack {
-                    if model.hasLog {
+                    if model.hasSource {
                         loadedFrame(frame)
                     } else {
                         emptyFrame(frame)
@@ -21,9 +22,17 @@ struct PreviewPane: View {
             }
             .padding(24)
 
-            if model.hasLog {
+            // ScrubBar is meaningful only in logged mode — live has no
+            // timeline.
+            if model.hasSource && !model.isLive {
                 ScrubBar()
+            } else if model.isLive {
+                liveStatusBar
             }
+        }
+        .sheet(isPresented: $showTelemetrySheet) {
+            ConnectTelemetrySheet()
+                .environment(model)
         }
         .background(Theme.previewBackground)
         .dropDestination(for: URL.self) { urls, _ in
@@ -80,9 +89,13 @@ struct PreviewPane: View {
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.textTertiary)
                 }
-                Button("Choose File…") { model.presentOpenPanel() }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Theme.accent)
+                HStack(spacing: 10) {
+                    Button("Choose File…") { model.presentOpenPanel() }
+                        .buttonStyle(.borderedProminent)
+                        .tint(Theme.accent)
+                    Button("Connect Radio…") { showTelemetrySheet = true }
+                        .buttonStyle(.bordered)
+                }
                 if let error = model.loadError {
                     Text(error)
                         .font(.system(size: 11))
@@ -94,6 +107,35 @@ struct PreviewPane: View {
         }
         .frame(width: size.width, height: size.height)
         .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    /// Compact "live" indicator that replaces the scrub bar in live mode.
+    /// Shows the port + baud + frame count and a disconnect button.
+    private var liveStatusBar: some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(model.liveTelemetry.isConnected
+                      ? Theme.trafficGreen : Theme.error)
+                .frame(width: 7, height: 7)
+            Text("LIVE")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Theme.textSecondary)
+            if case let .connected(port, baud) = model.liveTelemetry.status {
+                Text("\(port.replacingOccurrences(of: "/dev/", with: "")) · \(baud)")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Theme.textTertiary)
+                Text("\(model.liveTelemetry.frameCount) frames")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Theme.textMuted)
+            }
+            Spacer()
+            Button("Disconnect") { model.disconnectTelemetryRadio() }
+                .buttonStyle(.plain)
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.textSecondary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
     }
 
     /// Largest box of the given aspect ratio that fits inside `size`.

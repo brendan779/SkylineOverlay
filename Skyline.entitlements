@@ -2,9 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Sandbox is off: Skyline is distributed via GitHub releases (not the
+	     Mac App Store) with ad-hoc signing, and needs direct access to
+	     /dev/cu.* USB-serial telemetry radios and outbound RTSP video
+	     streams. Hardened runtime stays on; that's enough for ad-hoc dist. -->
 	<key>com.apple.security.app-sandbox</key>
-	<true/>
-	<key>com.apple.security.files.user-selected.read-write</key>
-	<true/>
+	<false/>
 </dict>
 </plist>

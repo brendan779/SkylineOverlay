@@ -4,8 +4,10 @@ import SwiftUI
 /// loaded files.
 struct SidebarView: View {
     @Environment(AppModel.self) private var model
+    @State private var showTelemetrySheet = false
 
     private let videoAccent = Color(hex: 0x3FA9FF)
+    private let liveAccent = Color(hex: 0xFFB347)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -17,10 +19,17 @@ struct SidebarView: View {
 
             importButton("Open Flight Log") { model.presentOpenPanel() }
                 .padding(.horizontal, 12)
-                .padding(.bottom, 14)
+                .padding(.bottom, 8)
+            importButton("Connect Telemetry Radio") {
+                showTelemetrySheet = true
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 14)
 
             sectionHeader("Flights")
-            if let url = model.logURL {
+            if model.isLive {
+                liveRadioRow
+            } else if let url = model.logURL {
                 fileRow(badge: "BIN", name: url.lastPathComponent,
                         accent: Theme.accent)
             } else {
@@ -48,6 +57,25 @@ struct SidebarView: View {
         .frame(width: Theme.sidebarWidth)
         .frame(maxHeight: .infinity)
         .background(Theme.surface)
+        .sheet(isPresented: $showTelemetrySheet) {
+            ConnectTelemetrySheet().environment(model)
+        }
+    }
+
+    /// Sidebar row shown when a live MAVLink radio is connected — mirrors
+    /// the file row layout but with a live-orange accent and a disconnect
+    /// affordance.
+    private var liveRadioRow: some View {
+        let status = model.liveTelemetry.status
+        let label: String = {
+            if case let .connected(port, baud) = status {
+                let short = port.replacingOccurrences(of: "/dev/cu.", with: "")
+                return "\(short)  ·  \(baud)"
+            }
+            return "Connecting…"
+        }()
+        return fileRow(badge: "LIVE", name: label, accent: liveAccent,
+                       onRemove: { model.disconnectTelemetryRadio() })
     }
 
     private var brand: some View {

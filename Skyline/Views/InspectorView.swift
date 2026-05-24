@@ -52,7 +52,7 @@ struct InspectorControls: View {
             if let kind = model.selectedWidget {
                 widgetEditor(kind)
             }
-            syncSection
+            if !model.isLive { syncSection }
             gimbalHeadtrackerSection
             outputSection
         }

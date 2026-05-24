@@ -5,17 +5,22 @@ struct RenderBar: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        VStack(spacing: 10) {
-            switch model.renderPhase {
-            case .idle:                idleState
-            case .rendering(let p):    renderingState(p)
-            case .done(let url):       doneState(url)
-            case .failed(let message): failedState(message)
+        if model.isLive {
+            // Export doesn't apply to a live stream in v1 — hide entirely.
+            EmptyView()
+        } else {
+            VStack(spacing: 10) {
+                switch model.renderPhase {
+                case .idle:                idleState
+                case .rendering(let p):    renderingState(p)
+                case .done(let url):       doneState(url)
+                case .failed(let message): failedState(message)
+                }
             }
+            .padding(14)
+            .background(Color.black.opacity(0.25))
+            .overlay(Divider().overlay(Theme.border), alignment: .top)
         }
-        .padding(14)
-        .background(Color.black.opacity(0.25))
-        .overlay(Divider().overlay(Theme.border), alignment: .top)
     }
 
     private var idleState: some View {

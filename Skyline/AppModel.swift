@@ -9,9 +9,18 @@ import UniformTypeIdentifiers
 @MainActor
 @Observable
 final class AppModel {
+    /// Where telemetry comes from — a loaded `.bin` log, or a live MAVLink
+    /// radio. Mutually exclusive; switching one tears down the other.
+    enum Mode { case logged, live }
+    var mode: Mode = .logged
+
     var flightLog: FlightLog?
     var logURL: URL?
     var loadError: String?
+
+    /// Live MAVLink source — owned even when in logged mode, so its
+    /// settings (port / baud) survive an unrelated load.
+    var liveTelemetry = LiveTelemetry()
 
     var config = OverlayConfig()
 
@@ -41,9 +50,24 @@ final class AppModel {
     var hasVideo: Bool { player != nil }
     var logDuration: Double { flightLog?.duration() ?? 0 }
 
-    /// Length of the scrub timeline.
+    /// True when there's *any* telemetry source — a loaded log or a live
+    /// radio. PreviewPane uses this to decide between empty-state and
+    /// loaded-state.
+    var hasSource: Bool {
+        switch mode {
+        case .logged: return hasLog
+        case .live:   return liveTelemetry.isConnected
+        }
+    }
+
+    /// Scrub / trim / export only apply to logged mode.
+    var isLive: Bool { mode == .live }
+
+    /// Length of the scrub timeline. In live mode the timeline is "now"
+    /// — controls that depend on this hide themselves.
     var timelineDuration: Double {
-        (hasVideo && videoDuration > 0) ? videoDuration : logDuration
+        if isLive { return 0 }
+        return (hasVideo && videoDuration > 0) ? videoDuration : logDuration
     }
 
     /// Telemetry time for the current playhead, clamped to the log.
@@ -51,10 +75,34 @@ final class AppModel {
         min(max(scrubTime + timeOffset, 0), logDuration)
     }
 
-    /// Telemetry interpolated to the current playhead.
+    /// Telemetry interpolated to the current playhead — or, in live mode,
+    /// a snapshot of the most recent MAVLink frames.
     var currentSample: TelemetrySample {
-        guard let log = flightLog else { return .placeholder }
-        return TelemetrySample.make(from: log, at: telemetryTime, config: config)
+        switch mode {
+        case .logged:
+            guard let log = flightLog else { return .placeholder }
+            return TelemetrySample.make(from: log, at: telemetryTime, config: config)
+        case .live:
+            return liveTelemetry.currentSample(config: config)
+        }
+    }
+
+    // ── Live telemetry connect / disconnect ──────────────────────────────
+    func connectTelemetryRadio(port: String, baud: Int) {
+        // Drop any loaded log; mutually exclusive sources.
+        flightLog = nil
+        logURL = nil
+        mapSnapshot = nil
+        scrubTime = 0
+        mode = .live
+        liveTelemetry.connect(port: port, baud: baud)
+        UserDefaults.standard.set(port, forKey: "Skyline.live.port")
+        UserDefaults.standard.set(baud, forKey: "Skyline.live.baud")
+    }
+
+    func disconnectTelemetryRadio() {
+        liveTelemetry.disconnect()
+        mode = .logged
     }
 
     // ── Video ────────────────────────────────────────────────────────────
@@ -94,6 +142,9 @@ final class AppModel {
 
     // ── Log loading ──────────────────────────────────────────────────────
     func loadLog(url: URL) {
+        // A new log replaces any live session.
+        if liveTelemetry.isConnected { liveTelemetry.disconnect() }
+        mode = .logged
         do {
             let log = try FlightLog(url: url)
             flightLog = log
