@@ -113,6 +113,23 @@ final class AppModel {
     private var playbackTimer: Timer?
     private var lastTick: Date?
 
+    /// Live RTSP / network video stream (Cosmostreamer over Ethernet etc.).
+    /// Distinct from the loaded-file `player` — either can be active, with
+    /// live taking precedence in the preview.
+    var liveVideo = LiveVideoStream()
+    var isLiveVideo: Bool { liveVideo.isPlaying || liveVideo.status != .disconnected }
+
+    // ── Live video connect / disconnect ──────────────────────────────────
+    func connectVideoStream(url: String) {
+        // A live stream replaces any loaded video file.
+        if hasVideo { clearVideo() }
+        liveVideo.connect(url: url)
+    }
+
+    func disconnectVideoStream() {
+        liveVideo.disconnect()
+    }
+
     // ── GPS map snapshot ─────────────────────────────────────────────────
     /// Cached MapKit render of the flight area for the GPS Map widget.
     var mapSnapshot: FlightMapImage?

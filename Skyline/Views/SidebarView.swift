@@ -5,6 +5,7 @@ import SwiftUI
 struct SidebarView: View {
     @Environment(AppModel.self) private var model
     @State private var showTelemetrySheet = false
+    @State private var showVideoSheet = false
 
     private let videoAccent = Color(hex: 0x3FA9FF)
     private let liveAccent = Color(hex: 0xFFB347)
@@ -39,11 +40,16 @@ struct SidebarView: View {
             Spacer()
 
             sectionHeader("Video")
-            importButton("Import Video") { model.presentVideoPanel() }
-                .padding(.horizontal, 12)
-                .padding(.top, 2)
-                .padding(.bottom, 8)
-            if let url = model.videoURL {
+            VStack(spacing: 6) {
+                importButton("Import Video") { model.presentVideoPanel() }
+                importButton("Connect Video Stream") { showVideoSheet = true }
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 2)
+            .padding(.bottom, 8)
+            if model.isLiveVideo {
+                liveVideoRow
+            } else if let url = model.videoURL {
                 fileRow(badge: url.pathExtension.uppercased(),
                         name: url.lastPathComponent,
                         accent: videoAccent,
@@ -60,6 +66,22 @@ struct SidebarView: View {
         .sheet(isPresented: $showTelemetrySheet) {
             ConnectTelemetrySheet().environment(model)
         }
+        .sheet(isPresented: $showVideoSheet) {
+            ConnectVideoSheet().environment(model)
+        }
+    }
+
+    /// Sidebar row shown when a live RTSP stream is connected.
+    private var liveVideoRow: some View {
+        let urlLabel: String = {
+            if case let .playing(url) = model.liveVideo.status { return url }
+            if case let .connecting(url) = model.liveVideo.status { return url }
+            return model.liveVideo.lastConnectedURL
+        }()
+        return fileRow(badge: "RTSP",
+                       name: urlLabel.replacingOccurrences(of: "rtsp://", with: ""),
+                       accent: videoAccent,
+                       onRemove: { model.disconnectVideoStream() })
     }
 
     /// Sidebar row shown when a live MAVLink radio is connected — mirrors

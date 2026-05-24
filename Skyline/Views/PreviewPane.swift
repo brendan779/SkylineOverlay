@@ -6,13 +6,14 @@ import UniformTypeIdentifiers
 struct PreviewPane: View {
     @Environment(AppModel.self) private var model
     @State private var showTelemetrySheet = false
+    @State private var showVideoSheet = false
 
     var body: some View {
         VStack(spacing: 0) {
             GeometryReader { geo in
                 let frame = Self.fit(aspect: 16.0 / 9.0, in: geo.size)
                 ZStack {
-                    if model.hasSource {
+                    if model.hasSource || model.isLiveVideo {
                         loadedFrame(frame)
                     } else {
                         emptyFrame(frame)
@@ -34,6 +35,10 @@ struct PreviewPane: View {
             ConnectTelemetrySheet()
                 .environment(model)
         }
+        .sheet(isPresented: $showVideoSheet) {
+            ConnectVideoSheet()
+                .environment(model)
+        }
         .background(Theme.previewBackground)
         .dropDestination(for: URL.self) { urls, _ in
             if let bin = urls.first(where: { $0.pathExtension.lowercased() == "bin" }) {
@@ -52,14 +57,21 @@ struct PreviewPane: View {
 
     private func loadedFrame(_ size: CGSize) -> some View {
         ZStack {
-            if let player = model.player {
+            // Backdrop priority: live RTSP → loaded video file → placeholder.
+            if model.isLiveVideo {
+                VLCVideoNSView(stream: model.liveVideo)
+            } else if let player = model.player {
                 PlayerView(player: player)
             } else {
                 VideoBackdrop()
             }
-            OverlayView(config: model.config, sample: model.currentSample,
-                        frameSize: size, mapSnapshot: model.mapSnapshot)
-            WidgetInteractionLayer(frameSize: size)
+            // Only draw the HUD when there's a telemetry source — placeholder
+            // widgets over a live video would be misleading.
+            if model.hasSource {
+                OverlayView(config: model.config, sample: model.currentSample,
+                            frameSize: size, mapSnapshot: model.mapSnapshot)
+                WidgetInteractionLayer(frameSize: size)
+            }
         }
         .frame(width: size.width, height: size.height)
         .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -94,6 +106,8 @@ struct PreviewPane: View {
                         .buttonStyle(.borderedProminent)
                         .tint(Theme.accent)
                     Button("Connect Radio…") { showTelemetrySheet = true }
+                        .buttonStyle(.bordered)
+                    Button("Connect Video…") { showVideoSheet = true }
                         .buttonStyle(.bordered)
                 }
                 if let error = model.loadError {
