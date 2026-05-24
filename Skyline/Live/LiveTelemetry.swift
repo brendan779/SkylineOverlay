@@ -2,6 +2,33 @@ import Foundation
 import Observation
 import CoreLocation
 
+/// Picks a sensible MAVLink stream rate for the kind of telemetry link in
+/// use. Low-bandwidth radios (LoRa, ELRS MAVLink backpacks) need a tight
+/// cap or they back up; SiK / RFD900-class radios handle much more.
+enum TelemetryLinkProfile: String, CaseIterable, Codable, Identifiable {
+    case lora          // Microair LoRa, ELRS MAVLink, etc.
+    case sik           // SiK, RFD900, anything with comfortable bandwidth
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .lora: return "LoRa / ELRS  (low rate)"
+        case .sik:  return "SiK / RFD900 (high rate)"
+        }
+    }
+
+    /// Per-stream rate sent in `REQUEST_DATA_STREAM(stream_id=ALL, rate=…)`.
+    /// LoRa gets 2 Hz to stay well inside the airlink's budget; SiK-class
+    /// links can comfortably carry the full ArduPilot HUD set at 10 Hz.
+    var rateHz: UInt16 {
+        switch self {
+        case .lora: return 2
+        case .sik:  return 10
+        }
+    }
+}
+
 /// Live MAVLink telemetry coming over a USB-serial radio.
 ///
 /// Holds the latest values for every field the HUD draws, plus the
@@ -93,12 +120,13 @@ final class LiveTelemetry {
     private let gcsSysId: UInt8 = 255
     private let gcsCompId: UInt8 = 0
 
-    /// Cap on aggregate MAVLink stream rate (Hz). Low-bandwidth links like
-    /// Microair LoRa swamp easily — 2 Hz keeps the link comfortable on
-    /// most setups. Per-message rates inherit this cap until the FC's
-    /// own SR_* parameters are set.
-    var maxStreamHz: UInt16 = 2 {
-        didSet { requestThrottledStreams() }
+    /// Selected link profile. Drives the cap sent in `REQUEST_DATA_STREAM`
+    /// — LoRa-class links need 2 Hz to stay comfortable; SiK / RFD900
+    /// handle 10 Hz easily. Changing it mid-session re-requests rates.
+    var linkProfile: TelemetryLinkProfile = .lora {
+        didSet {
+            if oldValue != linkProfile { requestThrottledStreams() }
+        }
     }
 
     /// Seconds since the connection opened — used as `t` for messages /
@@ -155,16 +183,16 @@ final class LiveTelemetry {
     }
 
     /// Send a single `REQUEST_DATA_STREAM` that caps every stream on the
-    /// FC at `maxStreamHz`. The FC's `SR_*` parameters set defaults at
-    /// boot; this request overrides them at runtime for the link we're
-    /// connected on, which is what we want.
+    /// FC at the link profile's rate. The FC's `SR_*` parameters set
+    /// defaults at boot; this request overrides them at runtime for the
+    /// link we're connected on, which is what we want.
     private func requestThrottledStreams() {
         guard let serial, let target = fcSysId else { return }
         let payload = Mavlink.requestDataStreamPayload(
             targetSystem: target,
             targetComponent: 1,            // MAV_COMP_ID_AUTOPILOT1
             streamId: 0,                   // MAV_DATA_STREAM_ALL
-            rateHz: maxStreamHz,
+            rateHz: linkProfile.rateHz,
             start: true)
         outboundSeq = outboundSeq &+ 1
         let frame = Mavlink.encodeV1(seq: outboundSeq,

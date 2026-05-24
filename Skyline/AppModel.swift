@@ -88,16 +88,20 @@ final class AppModel {
     }
 
     // ── Live telemetry connect / disconnect ──────────────────────────────
-    func connectTelemetryRadio(port: String, baud: Int) {
+    func connectTelemetryRadio(port: String, baud: Int,
+                               profile: TelemetryLinkProfile) {
         // Drop any loaded log; mutually exclusive sources.
         flightLog = nil
         logURL = nil
         mapSnapshot = nil
         scrubTime = 0
         mode = .live
+        liveTelemetry.linkProfile = profile     // applied on first heartbeat
         liveTelemetry.connect(port: port, baud: baud)
-        UserDefaults.standard.set(port, forKey: "Skyline.live.port")
-        UserDefaults.standard.set(baud, forKey: "Skyline.live.baud")
+        let d = UserDefaults.standard
+        d.set(port, forKey: "Skyline.live.port")
+        d.set(baud, forKey: "Skyline.live.baud")
+        d.set(profile.rawValue, forKey: "Skyline.live.linkProfile")
     }
 
     func disconnectTelemetryRadio() {

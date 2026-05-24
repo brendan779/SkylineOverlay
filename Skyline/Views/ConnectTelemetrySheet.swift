@@ -9,6 +9,7 @@ struct ConnectTelemetrySheet: View {
     @State private var ports: [String] = Serial.availablePorts()
     @State private var selectedPort: String = ""
     @State private var selectedBaud: Int = 57600
+    @State private var selectedProfile: TelemetryLinkProfile = .lora
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -61,6 +62,24 @@ struct ConnectTelemetrySheet: View {
                 .pickerStyle(.menu)
             }
 
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Link profile")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textSecondary)
+                Picker("", selection: $selectedProfile) {
+                    ForEach(TelemetryLinkProfile.allCases) { p in
+                        Text(p.label).tag(p)
+                    }
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                .pickerStyle(.menu)
+                Text("Caps the FC's MAVLink stream rate so a slow airlink "
+                     + "doesn't back up.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.textMuted)
+            }
+
             // Status line — pulls live state from the model.
             statusLine
 
@@ -70,7 +89,8 @@ struct ConnectTelemetrySheet: View {
                     .keyboardShortcut(.cancelAction)
                 Button("Connect") {
                     model.connectTelemetryRadio(port: selectedPort,
-                                                baud: selectedBaud)
+                                                baud: selectedBaud,
+                                                profile: selectedProfile)
                     dismiss()
                 }
                 .buttonStyle(.borderedProminent)
@@ -110,6 +130,10 @@ struct ConnectTelemetrySheet: View {
         }
         if Serial.commonBaudRates.contains(lastBaud) {
             selectedBaud = lastBaud
+        }
+        if let raw = defaults.string(forKey: "Skyline.live.linkProfile"),
+           let profile = TelemetryLinkProfile(rawValue: raw) {
+            selectedProfile = profile
         }
     }
 }
