@@ -83,6 +83,23 @@ final class LiveTelemetry {
     private var startedAt: Date?
     private var readTask: Task<Void, Never>?
     private var parseBuffer: [UInt8] = []
+    private var outboundSeq: UInt8 = 0
+    /// The first sysid we hear back from on the link (typically 1).
+    /// Used as the target for outbound throttling requests.
+    private var fcSysId: UInt8?
+    private var lastStreamRequest: Date?
+
+    /// Our (GCS) identity. Conventional values for a desktop GCS.
+    private let gcsSysId: UInt8 = 255
+    private let gcsCompId: UInt8 = 0
+
+    /// Cap on aggregate MAVLink stream rate (Hz). Low-bandwidth links like
+    /// Microair LoRa swamp easily — 2 Hz keeps the link comfortable on
+    /// most setups. Per-message rates inherit this cap until the FC's
+    /// own SR_* parameters are set.
+    var maxStreamHz: UInt16 = 2 {
+        didSet { requestThrottledStreams() }
+    }
 
     /// Seconds since the connection opened — used as `t` for messages /
     /// rangefinder fades / etc. Always non-negative.
@@ -131,7 +148,32 @@ final class LiveTelemetry {
         serial = nil
         startedAt = nil
         parseBuffer.removeAll(keepingCapacity: true)
+        fcSysId = nil
+        lastStreamRequest = nil
+        outboundSeq = 0
         status = .disconnected
+    }
+
+    /// Send a single `REQUEST_DATA_STREAM` that caps every stream on the
+    /// FC at `maxStreamHz`. The FC's `SR_*` parameters set defaults at
+    /// boot; this request overrides them at runtime for the link we're
+    /// connected on, which is what we want.
+    private func requestThrottledStreams() {
+        guard let serial, let target = fcSysId else { return }
+        let payload = Mavlink.requestDataStreamPayload(
+            targetSystem: target,
+            targetComponent: 1,            // MAV_COMP_ID_AUTOPILOT1
+            streamId: 0,                   // MAV_DATA_STREAM_ALL
+            rateHz: maxStreamHz,
+            start: true)
+        outboundSeq = outboundSeq &+ 1
+        let frame = Mavlink.encodeV1(seq: outboundSeq,
+                                     sysId: gcsSysId,
+                                     compId: gcsCompId,
+                                     msgId: 66,    // REQUEST_DATA_STREAM
+                                     payload: payload)
+        serial.write(frame)
+        lastStreamRequest = Date()
     }
 
     private func handleStreamEnd() {
@@ -159,6 +201,19 @@ final class LiveTelemetry {
     }
 
     private func apply(_ frame: Mavlink.Frame) {
+        // Latch the FC's sysid the first time we see it talk, and use
+        // that to ask for low stream rates. Re-ask occasionally in case
+        // the FC reboots or the radio loses our earlier request.
+        if frame.sysId != gcsSysId, frame.sysId != 0 {
+            if fcSysId != frame.sysId {
+                fcSysId = frame.sysId
+                requestThrottledStreams()
+            } else if let last = lastStreamRequest,
+                      Date().timeIntervalSince(last) > 15 {
+                requestThrottledStreams()
+            }
+        }
+
         guard let id = Mavlink.MsgID(rawValue: frame.msgId) else { return }
         let p = frame.payload
         switch id {

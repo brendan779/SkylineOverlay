@@ -112,4 +112,22 @@ final class Serial: @unchecked Sendable {
         // The detached task closes `fd` once it sees cancellation.
         fd = -1
     }
+
+    /// Write raw bytes to the device. Used to send outbound MAVLink (e.g.
+    /// `REQUEST_DATA_STREAM`) to throttle the FC's telemetry rates.
+    func write(_ bytes: [UInt8]) {
+        guard fd >= 0 else { return }
+        var sent = 0
+        bytes.withUnsafeBufferPointer { buf in
+            while sent < bytes.count {
+                let n = Darwin.write(fd, buf.baseAddress!.advanced(by: sent),
+                                     bytes.count - sent)
+                if n < 0 {
+                    if errno == EAGAIN || errno == EINTR { continue }
+                    break
+                }
+                sent += n
+            }
+        }
+    }
 }

@@ -51,6 +51,7 @@ enum Mavlink {
         33:  104,  // GLOBAL_POSITION_INT
         36:  222,  // SERVO_OUTPUT_RAW
         65:  118,  // RC_CHANNELS
+        66:  148,  // REQUEST_DATA_STREAM (outbound)
         74:  20,   // VFR_HUD
         105: 93,   // HIGHRES_IMU
         147: 154,  // BATTERY_STATUS
@@ -186,6 +187,39 @@ enum Mavlink {
     private static func dummy() -> Frame {
         Frame(msgId: 0, sysId: 0, compId: 0, seq: 0,
               payload: [UInt8](repeating: 0, count: maxPayload))
+    }
+
+    // ── Outbound encoding (v1) ──────────────────────────────────────────
+    /// Frame a payload as a MAVLink v1 message. v1 is simpler than v2 and
+    /// every ArduPilot revision still accepts it, so we use it for our
+    /// outbound rate-throttling requests.
+    static func encodeV1(seq: UInt8, sysId: UInt8, compId: UInt8,
+                         msgId: UInt8, payload: [UInt8]) -> [UInt8] {
+        var bytes: [UInt8] = [
+            v1Start,
+            UInt8(payload.count),
+            seq, sysId, compId, msgId,
+        ]
+        bytes.append(contentsOf: payload)
+        let crcX = crcExtra[UInt32(msgId)] ?? 0
+        let computed = crc(over: bytes[1..<bytes.count], crcExtra: crcX)
+        bytes.append(UInt8(computed & 0xFF))
+        bytes.append(UInt8(computed >> 8))
+        return bytes
+    }
+
+    /// Build a `REQUEST_DATA_STREAM` payload (6 bytes, wire order).
+    /// `streamId` 0 = `MAV_DATA_STREAM_ALL`; rate in Hz.
+    static func requestDataStreamPayload(targetSystem: UInt8,
+                                         targetComponent: UInt8,
+                                         streamId: UInt8,
+                                         rateHz: UInt16,
+                                         start: Bool) -> [UInt8] {
+        [
+            UInt8(rateHz & 0xFF), UInt8(rateHz >> 8),
+            targetSystem, targetComponent,
+            streamId, start ? 1 : 0,
+        ]
     }
 
     // ── Little-endian field readers ─────────────────────────────────────
