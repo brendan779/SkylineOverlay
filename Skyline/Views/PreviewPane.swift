@@ -1,6 +1,10 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+#if canImport(VLCKit)
+import VLCKit
+#endif
+
 /// Centre pane — the 16:9 preview frame (video backdrop + overlay) and the
 /// scrub bar, or an empty drop-zone state when there's no data source.
 struct PreviewPane: View {
@@ -107,8 +111,13 @@ struct PreviewPane: View {
                         .tint(Theme.accent)
                     Button("Connect Radio…") { showTelemetrySheet = true }
                         .buttonStyle(.bordered)
+                    // Live video is gated on VLCKit being linked — until
+                    // the goggles ↔ Cosmostreamer path is confirmed it's a
+                    // "coming soon" feature, hidden in release builds.
+#if canImport(VLCKit)
                     Button("Connect Video…") { showVideoSheet = true }
                         .buttonStyle(.bordered)
+#endif
                 }
                 if let error = model.loadError {
                     Text(error)

@@ -1,5 +1,9 @@
 import SwiftUI
 
+#if canImport(VLCKit)
+import VLCKit
+#endif
+
 /// Left pane — brand, the flight-log and video import actions, and the
 /// loaded files.
 struct SidebarView: View {
@@ -42,7 +46,9 @@ struct SidebarView: View {
             sectionHeader("Video")
             VStack(spacing: 6) {
                 importButton("Import Video") { model.presentVideoPanel() }
+#if canImport(VLCKit)
                 importButton("Connect Video Stream") { showVideoSheet = true }
+#endif
             }
             .padding(.horizontal, 12)
             .padding(.top, 2)
