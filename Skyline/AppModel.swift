@@ -178,6 +178,24 @@ final class AppModel {
     }
 
     // ── Log loading ──────────────────────────────────────────────────────
+
+    /// Unload the currently loaded `.bin` log. Mirrors `clearVideo()` for
+    /// the file-backed video — leaves widget configuration alone, just
+    /// drops the telemetry source.
+    func clearLog() {
+        pause()
+        flightLog = nil
+        logURL = nil
+        loadError = nil
+        scrubTime = 0
+        mapSnapshot = nil
+        rangeStart = nil
+        rangeEnd = nil
+        trimMode = false
+        if case .done = renderPhase { renderPhase = .idle }
+        if case .failed = renderPhase { renderPhase = .idle }
+    }
+
     func loadLog(url: URL) {
         // A new log replaces any live session.
         if liveTelemetry.isConnected { liveTelemetry.disconnect() }

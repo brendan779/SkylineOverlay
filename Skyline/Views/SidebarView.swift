@@ -37,7 +37,8 @@ struct SidebarView: View {
                 liveRadioRow
             } else if let url = model.logURL {
                 fileRow(badge: "BIN", name: url.lastPathComponent,
-                        accent: Theme.accent)
+                        accent: Theme.accent,
+                        onRemove: { model.clearLog() })
             } else {
                 emptyHint("No log loaded")
             }
