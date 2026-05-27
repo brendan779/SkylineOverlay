@@ -123,15 +123,31 @@ final class AppModel {
     var liveVideo = LiveVideoStream()
     var isLiveVideo: Bool { liveVideo.isPlaying || liveVideo.status != .disconnected }
 
+    /// Live video from a USB UVC capture card. The most reliable Skyline
+    /// video path right now — pairs with telemetry exactly like RTSP does.
+    var liveCaptureCard = LiveCaptureCard()
+    var isLiveCaptureCard: Bool { liveCaptureCard.isPlaying }
+
     // ── Live video connect / disconnect ──────────────────────────────────
     func connectVideoStream(url: String) {
-        // A live stream replaces any loaded video file.
+        // Backdrop sources are mutually exclusive.
         if hasVideo { clearVideo() }
+        if liveCaptureCard.isPlaying { liveCaptureCard.disconnect() }
         liveVideo.connect(url: url)
     }
 
     func disconnectVideoStream() {
         liveVideo.disconnect()
+    }
+
+    func connectCaptureCard(device: AVCaptureDevice) {
+        if hasVideo { clearVideo() }
+        if liveVideo.isPlaying { liveVideo.disconnect() }
+        liveCaptureCard.connect(device: device)
+    }
+
+    func disconnectCaptureCard() {
+        liveCaptureCard.disconnect()
     }
 
     // ── GPS map snapshot ─────────────────────────────────────────────────
@@ -205,6 +221,9 @@ final class AppModel {
 
     // ── Video loading ────────────────────────────────────────────────────
     func loadVideo(url: URL) {
+        // A loaded file replaces any live backdrop.
+        if liveVideo.isPlaying { liveVideo.disconnect() }
+        if liveCaptureCard.isPlaying { liveCaptureCard.disconnect() }
         pause()
         removeTimeObserver()
 

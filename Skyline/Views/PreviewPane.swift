@@ -11,13 +11,14 @@ struct PreviewPane: View {
     @Environment(AppModel.self) private var model
     @State private var showTelemetrySheet = false
     @State private var showVideoSheet = false
+    @State private var showCaptureCardSheet = false
 
     var body: some View {
         VStack(spacing: 0) {
             GeometryReader { geo in
                 let frame = Self.fit(aspect: 16.0 / 9.0, in: geo.size)
                 ZStack {
-                    if model.hasSource || model.isLiveVideo {
+                    if model.hasSource || model.isLiveVideo || model.isLiveCaptureCard {
                         loadedFrame(frame)
                     } else {
                         emptyFrame(frame)
@@ -37,6 +38,10 @@ struct PreviewPane: View {
         }
         .sheet(isPresented: $showTelemetrySheet) {
             ConnectTelemetrySheet()
+                .environment(model)
+        }
+        .sheet(isPresented: $showCaptureCardSheet) {
+            ConnectCaptureCardSheet()
                 .environment(model)
         }
         .sheet(isPresented: $showVideoSheet) {
@@ -61,8 +66,11 @@ struct PreviewPane: View {
 
     private func loadedFrame(_ size: CGSize) -> some View {
         ZStack {
-            // Backdrop priority: live RTSP → loaded video file → placeholder.
-            if model.isLiveVideo {
+            // Backdrop priority: live capture card → live RTSP → loaded video
+            // file → placeholder.
+            if model.isLiveCaptureCard {
+                CaptureCardNSView(captureCard: model.liveCaptureCard)
+            } else if model.isLiveVideo {
                 VLCVideoNSView(stream: model.liveVideo)
             } else if let player = model.player {
                 PlayerView(player: player)
@@ -111,9 +119,12 @@ struct PreviewPane: View {
                         .tint(Theme.accent)
                     Button("Connect Radio…") { showTelemetrySheet = true }
                         .buttonStyle(.bordered)
-                    // Live video is gated on VLCKit being linked — until
-                    // the goggles ↔ Cosmostreamer path is confirmed it's a
-                    // "coming soon" feature, hidden in release builds.
+                    // Capture card is native AVFoundation — always shown.
+                    Button("Connect Capture…") { showCaptureCardSheet = true }
+                        .buttonStyle(.bordered)
+                    // Live RTSP gated on VLCKit being linked — hidden in
+                    // release builds until the goggles ↔ Cosmostreamer side
+                    // is verified.
 #if canImport(VLCKit)
                     Button("Connect Video…") { showVideoSheet = true }
                         .buttonStyle(.bordered)

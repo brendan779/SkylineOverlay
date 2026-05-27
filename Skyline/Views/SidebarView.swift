@@ -10,6 +10,7 @@ struct SidebarView: View {
     @Environment(AppModel.self) private var model
     @State private var showTelemetrySheet = false
     @State private var showVideoSheet = false
+    @State private var showCaptureCardSheet = false
 
     private let videoAccent = Color(hex: 0x3FA9FF)
     private let liveAccent = Color(hex: 0xFFB347)
@@ -46,6 +47,9 @@ struct SidebarView: View {
             sectionHeader("Video")
             VStack(spacing: 6) {
                 importButton("Import Video") { model.presentVideoPanel() }
+                importButton("Connect Capture Card") {
+                    showCaptureCardSheet = true
+                }
 #if canImport(VLCKit)
                 importButton("Connect Video Stream") { showVideoSheet = true }
 #endif
@@ -53,7 +57,9 @@ struct SidebarView: View {
             .padding(.horizontal, 12)
             .padding(.top, 2)
             .padding(.bottom, 8)
-            if model.isLiveVideo {
+            if model.isLiveCaptureCard {
+                liveCaptureCardRow
+            } else if model.isLiveVideo {
                 liveVideoRow
             } else if let url = model.videoURL {
                 fileRow(badge: url.pathExtension.uppercased(),
@@ -75,6 +81,23 @@ struct SidebarView: View {
         .sheet(isPresented: $showVideoSheet) {
             ConnectVideoSheet().environment(model)
         }
+        .sheet(isPresented: $showCaptureCardSheet) {
+            ConnectCaptureCardSheet().environment(model)
+        }
+    }
+
+    /// Sidebar row shown when a USB capture card is feeding the backdrop.
+    private var liveCaptureCardRow: some View {
+        let name: String = {
+            switch model.liveCaptureCard.status {
+            case .playing(let n), .connecting(let n): return n
+            default: return "Connecting…"
+            }
+        }()
+        return fileRow(badge: "USB",
+                       name: name,
+                       accent: videoAccent,
+                       onRemove: { model.disconnectCaptureCard() })
     }
 
     /// Sidebar row shown when a live RTSP stream is connected.
