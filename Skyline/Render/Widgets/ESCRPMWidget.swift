@@ -58,12 +58,16 @@ struct ESCRPMWidget: View {
                                        count: motors.count)
         let motorRadius = w * 0.13
 
-        // Render motors in instance order, looking up each instance's
-        // position from the layout table.
-        for motor in motors {
-            guard let position = positions[motor.instance + 1] else { continue }
-            drawMotor(&ctx, motor: motor, at: position, radius: motorRadius,
-                      panelHeight: h)
+        // The motor *number* comes from the position in the sorted ESC
+        // list, not from the raw Instance value — ArduPilot's ESC
+        // Instance is the servo channel index (so lift motors on C7–C10
+        // log as instances 6–9, etc.), which would never match the 1–N
+        // motor mapping otherwise.
+        for (index, motor) in motors.enumerated() {
+            let motorNumber = index + 1
+            guard let position = positions[motorNumber] else { continue }
+            drawMotor(&ctx, motor: motor, motorNumber: motorNumber,
+                      at: position, radius: motorRadius, panelHeight: h)
         }
     }
 
@@ -142,6 +146,7 @@ struct ESCRPMWidget: View {
     /// One motor's prop disc, ring gauge and RPM readout.
     private func drawMotor(_ ctx: inout GraphicsContext,
                            motor: TelemetrySample.ESCMotor,
+                           motorNumber: Int,
                            at p: CGPoint, radius r: CGFloat,
                            panelHeight h: CGFloat) {
         var layer = ctx
@@ -183,10 +188,12 @@ struct ESCRPMWidget: View {
                     .foregroundStyle(.white),
                    at: p, anchor: .center)
 
-        // Tiny instance label outside the disc, near the airframe centre.
+        // Motor number label outside the disc. Position-derived so it
+        // matches the ArduPilot Quad X / tri-Y convention regardless of
+        // what raw Instance values the log carries.
         let labelOffsetX = (p.x < disc.midX) ? r + 4 : -r - 4
         let labelAnchor: UnitPoint = (p.x < disc.midX) ? .leading : .trailing
-        layer.draw(Text("M\(motor.instance + 1)").font(.hud(h * 0.045))
+        layer.draw(Text("M\(motorNumber)").font(.hud(h * 0.045))
                     .foregroundStyle(theme.label.color.opacity(0.65)),
                    at: CGPoint(x: p.x + labelOffsetX, y: p.y + r),
                    anchor: labelAnchor)
