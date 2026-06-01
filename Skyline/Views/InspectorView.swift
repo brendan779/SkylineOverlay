@@ -356,6 +356,10 @@ struct InspectorControls: View {
             smoothingControls(kind, allowsKalman: true)
         case .airSpeed:
             smoothingControls(kind, allowsKalman: false)
+        case .escRpm:
+            // Reuse the same smoothing controls — the slider window is what
+            // sample-time `sampleSmoothed` reads in TelemetrySample.make.
+            smoothingControls(kind, allowsKalman: false)
         case .motors:
             motorChannelEditor
         default:

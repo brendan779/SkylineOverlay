@@ -44,6 +44,17 @@ struct TelemetrySample {
     var gForce: GForce
     var hasIMU: Bool
 
+    // ── ESC telemetry ────────────────────────────────────────────────────
+    /// One entry per ESC instance in sorted order — the data driving the
+    /// ESC RPM widget.
+    var escMotors: [ESCMotor]
+    /// Top of the per-motor ring gauges (RPM). Derived from the log as
+    /// `max observed × 1.25`. Zero when the log has no ESC telemetry.
+    var escMaxRPM: Double
+    /// Whether the log actually carries ESC telemetry. False ⇒ the widget
+    /// shows its placeholder state.
+    var hasESC: Bool
+
     // ── Headtracker suppression ──────────────────────────────────────────
     /// 0…1 scalar the renderer multiplies into every widget's opacity. 1
     /// when the feature is off (or the configured channel is missing); fades
@@ -76,6 +87,15 @@ struct TelemetrySample {
     struct MotorBar {
         var label: String       // shown below the bar
         var value: Double       // servo PWM, µs (≈1000…2000)
+        var opacity: Double     // 0…1
+    }
+
+    /// One ESC instance's RPM, with a fade level that drops to zero a
+    /// second after the ESC stops reporting (used to grey out a dead
+    /// motor in the ESC RPM widget).
+    struct ESCMotor {
+        var instance: Int       // 0-based ESC index (≈ motor number − 1)
+        var rpm: Double
         var opacity: Double     // 0…1
     }
 
@@ -121,6 +141,17 @@ struct TelemetrySample {
                 value: log.sample(series.samples, at: t),
                 opacity: fade(series.secondsSinceLive(at: t),
                               hold: 1.0, ramp: 0.4))
+        }
+
+        // ESC telemetry — one motor reading per detected ESC instance, in
+        // sorted order, smoothed via the per-widget window.
+        let escWindow = config.smoothing(for: .escRpm).window
+        let escMotors = log.escInstances.map { inst -> ESCMotor in
+            let series = log.escRPM[inst]?.samples ?? []
+            let rpm = log.sampleSmoothed(series, at: t, window: escWindow)
+            let opacity = fade(log.escRPM[inst]?.secondsSinceLive(at: t)
+                               ?? .infinity, hold: 1.5, ramp: 0.5)
+            return ESCMotor(instance: inst, rpm: rpm, opacity: opacity)
         }
 
         let windVN = log.windVN.isEmpty ? 0 : log.sample(log.windVN, at: t)
@@ -181,6 +212,9 @@ struct TelemetrySample {
             hasBattery: !log.batteryVoltage.isEmpty,
             gForce: gForce,
             hasIMU: !log.accelZ.isEmpty,
+            escMotors: escMotors,
+            escMaxRPM: log.escMaxRPM,
+            hasESC: !log.escInstances.isEmpty,
             overlayOpacityScale: overlayScale)
     }
 
@@ -211,5 +245,6 @@ struct TelemetrySample {
         hasBattery: false,
         gForce: GForce(lateralX: 0, lateralY: 0, vertical: 1, peakLateral: 0),
         hasIMU: false,
+        escMotors: [], escMaxRPM: 0, hasESC: false,
         overlayOpacityScale: 1)
 }

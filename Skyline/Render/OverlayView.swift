@@ -124,6 +124,11 @@ struct OverlayView: View {
         case .motors:
             MotorBarWidget(settings: settings, theme: config.theme,
                            motors: sample.motors, size: size)
+        case .escRpm:
+            ESCRPMWidget(settings: settings, theme: config.theme,
+                         motors: sample.escMotors,
+                         maxRPM: sample.escMaxRPM,
+                         hasESC: sample.hasESC, size: size)
         case .rangefinder:
             RangefinderWidget(settings: settings, theme: config.theme,
                               distance: sample.rangefinder,

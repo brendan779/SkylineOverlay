@@ -473,6 +473,9 @@ final class LiveTelemetry {
             hasBattery: hasBattery,
             gForce: gForce,
             hasIMU: hasIMU,
+            // ESC telemetry — live MAVLink ESC_TELEMETRY_* parsing is a
+            // follow-up; for now the widget shows its placeholder in live.
+            escMotors: [], escMaxRPM: 0, hasESC: false,
             overlayOpacityScale: opacityScale)
     }
 

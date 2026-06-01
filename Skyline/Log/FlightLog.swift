@@ -102,6 +102,17 @@ final class FlightLog {
     /// Rangefinder readings, wrapped for the same drop-out fade.
     private(set) var rangefinderFade = FadingSeries.empty
 
+    /// ESC telemetry RPM per ESC instance (0…). Each series is wrapped in
+    /// a `FadingSeries` (threshold 0, so any sample counts as live) so the
+    /// ESC widget can fade out a motor that stops reporting.
+    private(set) var escRPM: [Int: FadingSeries] = [:]
+    /// Sorted list of ESC instances that have at least one RPM sample.
+    private(set) var escInstances: [Int] = []
+    /// Highest RPM seen across all ESC instances over the whole flight,
+    /// multiplied by 1.25 to give the widget's ring gauges some headroom.
+    /// Zero when the log has no ESC telemetry.
+    private(set) var escMaxRPM: Double = 0
+
     /// PWM at or above which an RCOU channel counts as "live".
     static let motorLiveThreshold: Double = 1000
 
@@ -120,7 +131,7 @@ final class FlightLog {
     private func build(from data: Data) throws {
         let wanted: Set<String> = [
             "GPS", "ARSP", "BARO", "ATT", "MODE", "MSG", "RFND", "XKF2", "NKF2",
-            "RCOU", "RCIN", "BAT", "IMU", "ACC", "ARM", "ORGN", "PARM",
+            "RCOU", "RCIN", "BAT", "IMU", "ACC", "ARM", "ORGN", "PARM", "ESC",
         ]
         var t0: Double?
 
@@ -128,6 +139,8 @@ final class FlightLog {
         // parsing. We don't filter — every channel the log carries gets a
         // series, and the Motors widget picks which to show.
         var rcouRaw: [Int: Series] = [:]
+        // ESC telemetry RPM per instance, collected raw, then wrapped.
+        var escRaw: [Int: Series] = [:]
 
         // Home detection inputs, resolved after the whole log is read.
         var originHome: GeoPoint?     // ORGN Type 0 — the logged home
@@ -217,6 +230,11 @@ final class FlightLog {
                         rcInChannels[ch, default: []].append((t, v))
                     }
                 }
+            case "ESC":
+                if let inst = m.fields["Instance"]?.double,
+                   let rpm = m.fields["RPM"]?.double {
+                    escRaw[Int(inst), default: []].append((t, rpm))
+                }
             case "PARM":
                 // Capture SERVO<n>_FUNCTION values so the Motors widget can
                 // auto-detect which channels carry throttle and the motors.
@@ -250,6 +268,14 @@ final class FlightLog {
         // Every rangefinder sample is already a valid reading, so any of them
         // counts as "live" — a zero threshold makes the fade purely recency.
         rangefinderFade = FadingSeries(rangefinder, threshold: 0)
+
+        // ESC RPM — same fade pattern (any sample is "live"; RPM = 0 is
+        // valid for a stopped motor). Dynamic max is the highest RPM seen
+        // anywhere in the flight × 1.25 for ring-gauge headroom.
+        escRPM = escRaw.mapValues { FadingSeries($0, threshold: 0) }
+        escInstances = escRaw.keys.sorted()
+        let peak = escRaw.values.flatMap { $0.map(\.v) }.max() ?? 0
+        escMaxRPM = peak * 1.25
 
         resolveHome(originHome: originHome, firstArmTime: firstArmTime)
         buildPeakG()

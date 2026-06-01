@@ -13,6 +13,7 @@ enum WidgetKind: String, CaseIterable, Codable, Identifiable {
     case heading
     case verticalSpeed
     case motors
+    case escRpm
     case rangefinder
     case battery
     case gforce
@@ -33,6 +34,7 @@ enum WidgetKind: String, CaseIterable, Codable, Identifiable {
         case .heading:       return "Heading Compass"
         case .verticalSpeed: return "Vertical Speed"
         case .motors:        return "Motors"
+        case .escRpm:        return "ESC RPM"
         case .rangefinder:   return "Rangefinder"
         case .battery:       return "Battery"
         case .gforce:        return "G-Force"
@@ -60,6 +62,8 @@ enum WidgetKind: String, CaseIterable, Codable, Identifiable {
             return CGSize(width: 60, height: 150)
         case .motors:
             return CGSize(width: 150, height: 150)
+        case .escRpm:
+            return CGSize(width: 280, height: 280)
         case .rangefinder:
             return CGSize(width: 120, height: 70)
         case .battery:
